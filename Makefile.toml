@@ -8,17 +8,81 @@ install_crate = { crate_name = "flip-link", binary = "flip-link", test_arg = ["-
 command = "cargo"
 args = ["build", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-2mb"]
 
+[tasks.copy-x-2mb]
+dependencies = ["build-2mb"]
+script = [
+'''
+if [ ! -f rmk-boot.x ]; then
+    touch build.rs
+    cargo build --release --target thumbv6m-none-eabi --features rp2040-2mb
+fi
+cp rmk-boot.x rmk-boot-rp2040-2mb.x
+'''
+]
+
 [tasks.build-4mb]
 command = "cargo"
 args = ["build", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-4mb"]
+
+[tasks.copy-x-4mb]
+dependencies = ["build-4mb"]
+script = [
+'''
+if [ ! -f rmk-boot.x ]; then
+    touch build.rs
+    cargo build --release --target thumbv6m-none-eabi --features rp2040-4mb
+fi
+cp rmk-boot.x rmk-boot-rp2040-4mb.x
+'''
+]
 
 [tasks.build-8mb]
 command = "cargo"
 args = ["build", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-8mb"]
 
+[tasks.copy-x-8mb]
+dependencies = ["build-8mb"]
+script = [
+'''
+if [ ! -f rmk-boot.x ]; then
+    touch build.rs
+    cargo build --release --target thumbv6m-none-eabi --features rp2040-8mb
+fi
+cp rmk-boot.x rmk-boot-rp2040-8mb.x
+'''
+]
+
 [tasks.build-16mb]
 command = "cargo"
 args = ["build", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-16mb"]
+
+[tasks.copy-x-16mb]
+dependencies = ["build-16mb"]
+script = [
+'''
+if [ ! -f rmk-boot.x ]; then
+    touch build.rs
+    cargo build --release --target thumbv6m-none-eabi --features rp2040-16mb
+fi
+cp rmk-boot.x rmk-boot-rp2040-16mb.x
+'''
+]
+
+[tasks.build-nrf]
+command = "cargo"
+args = ["build", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52840"]
+
+[tasks.copy-x-nrf]
+dependencies = ["build-nrf"]
+script = [
+'''
+if [ ! -f rmk-boot.x ]; then
+    touch build.rs
+    cargo build --release --target thumbv7em-none-eabihf --features nrf52840
+fi
+cp rmk-boot.x rmk-boot-nrf52840.x
+'''
+]
 
 [tasks.objcopy-2mb]
 dependencies = ["install-llvm-tools", "build-2mb"]
@@ -40,37 +104,33 @@ dependencies = ["install-llvm-tools", "build-16mb"]
 command = "cargo"
 args = ["objcopy", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-16mb", "--", "-O", "ihex", "rmk-boot-rp2040-16mb.hex"]
 
-[tasks.uf2-2mb]
-dependencies = ["objcopy-2mb"]
-command = "cargo"
-args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-2mb.hex", "--output-path", "rmk-boot-rp2040-2mb.uf2", "--family", "rp2040"]
-
-[tasks.uf2-4mb]
-dependencies = ["objcopy-4mb"]
-command = "cargo"
-args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-4mb.hex", "--output-path", "rmk-boot-rp2040-4mb.uf2", "--family", "rp2040"]
-
-[tasks.uf2-8mb]
-dependencies = ["objcopy-8mb"]
-command = "cargo"
-args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-8mb.hex", "--output-path", "rmk-boot-rp2040-8mb.uf2", "--family", "rp2040"]
-
-[tasks.uf2-16mb]
-dependencies = ["objcopy-16mb"]
-command = "cargo"
-args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-16mb.hex", "--output-path", "rmk-boot-rp2040-16mb.uf2", "--family", "rp2040"]
-
-[tasks.build-nrf]
-command = "cargo"
-args = ["build", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52840"]
-
 [tasks.objcopy-nrf]
 dependencies = ["install-llvm-tools", "build-nrf"]
 command = "cargo"
 args = ["objcopy", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52840", "--", "-O", "ihex", "rmk-boot-nrf52840.hex"]
 
+[tasks.uf2-2mb]
+dependencies = ["copy-x-2mb", "objcopy-2mb"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-2mb.hex", "--output-path", "rmk-boot-rp2040-2mb.uf2", "--family", "rp2040"]
+
+[tasks.uf2-4mb]
+dependencies = ["copy-x-4mb", "objcopy-4mb"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-4mb.hex", "--output-path", "rmk-boot-rp2040-4mb.uf2", "--family", "rp2040"]
+
+[tasks.uf2-8mb]
+dependencies = ["copy-x-8mb", "objcopy-8mb"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-8mb.hex", "--output-path", "rmk-boot-rp2040-8mb.uf2", "--family", "rp2040"]
+
+[tasks.uf2-16mb]
+dependencies = ["copy-x-16mb", "objcopy-16mb"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-16mb.hex", "--output-path", "rmk-boot-rp2040-16mb.uf2", "--family", "rp2040"]
+
 [tasks.uf2-nrf]
-dependencies = ["objcopy-nrf"]
+dependencies = ["copy-x-nrf", "objcopy-nrf"]
 command = "cargo"
 args = ["hex-to-uf2", "--input-path", "rmk-boot-nrf52840.hex", "--output-path", "rmk-boot-nrf52840.uf2", "--family", "nrf52840"]
 

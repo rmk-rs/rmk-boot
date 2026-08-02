@@ -84,24 +84,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rmk-boot"
-version = "0.1.0"
-dependencies = [
- "cortex-m",
- "cortex-m-rt",
- "embassy-boot",
- "embassy-boot-rp",
- "embassy-embedded-hal",
- "embassy-nrf",
- "embassy-rp",
- "embassy-sync",
- "embassy-time",
- "embassy-usb",
- "embassy-usb-dfu",
- "embedded-storage",
-]
-
-[[package]]
 name = "bytemuck"
 version = "1.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1021,6 +1003,24 @@ name = "rgb"
 version = "0.8.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47b34b781b31e5d73e9fbc8689c70551fd1ade9a19e3e28cfec8580a79290cc4"
+
+[[package]]
+name = "rmk-boot"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "embassy-boot",
+ "embassy-boot-rp",
+ "embassy-embedded-hal",
+ "embassy-nrf",
+ "embassy-rp",
+ "embassy-sync",
+ "embassy-time",
+ "embassy-usb",
+ "embassy-usb-dfu",
+ "embedded-storage",
+]
 
 [[package]]
 name = "rp-pac"

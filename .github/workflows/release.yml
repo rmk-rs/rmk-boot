@@ -29,6 +29,7 @@ jobs:
           files: |
             *.uf2
             *.hex
+            *.x
             rmk-boot-nrf52840.elf
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
