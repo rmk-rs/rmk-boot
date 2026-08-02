@@ -1,0 +1,50 @@
+[package]
+name = "rmk-boot"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Shared
+embassy-embedded-hal = "0.6"
+embassy-sync = "0.8"
+embassy-time = "0.5.1"
+embedded-storage = "0.3"
+cortex-m = "0.7.6"
+cortex-m-rt = "0.7.5"
+
+# RP2040
+embassy-rp = { version = "0.10.0", features = [
+    "rp2040",
+    "critical-section-impl",
+    "time-driver",
+], optional = true }
+embassy-boot-rp = { version = "0.10.0", optional = true }
+embassy-usb = { version = "0.6", default-features = false, optional = true }
+embassy-usb-dfu = { version = "0.3", default-features = false, features = [
+    "dfu",
+    "cortex-m",
+], optional = true }
+
+# nRF52840
+embassy-nrf = { version = "0.10", features = [
+    "nrf52840",
+    "time-driver-rtc1",
+    "unstable-pac",
+], optional = true }
+embassy-boot = "0.7"
+
+[features]
+rp2040 = ["embassy-rp", "embassy-boot-rp", "embassy-usb", "embassy-usb-dfu"]
+rp2040-2mb = ["rp2040"]
+rp2040-4mb = ["rp2040"]
+rp2040-8mb = ["rp2040"]
+rp2040-16mb = ["rp2040"]
+nrf52840 = ["embassy-nrf", "cortex-m/critical-section-single-core", "embassy-usb", "embassy-usb-dfu"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+debug = false
+panic = "abort"
+overflow-checks = false
