@@ -10,20 +10,28 @@ Combine it with RMK's =dfu_rp= or =dfu_nrf= feature — after the initial flash
 you never need to press BOOTSEL again; all subsequent firmware updates happen
 over USB via =dfu-util=.
 
+rmk-boot ships a linker script called =rmk-memory.x= alongside its firmware
+binaries. This file is the single source of truth for the flash partition
+layout — RMK reads partition offsets from embedded linker symbols at runtime
+via =init_flash_from_linkerscript()=. No manual address calculation, no
+matching =memory.x= needed.
+
 * Features
 
-- **Dual-slot firmware** — flash is split into ACTIVE and DFU partitions;
+- =Dual-slot firmware= — flash is split into ACTIVE and DFU partitions;
   embassy-boot copies from DFU to ACTIVE on boot. If the new firmware panics
   or fails to =mark_booted()= in time, the bootloader reverts automatically.
-- **Power-loss safe** — the swap operation is crash-recoverable; a partially
+- =Power-loss safe= — the swap operation is crash-recoverable; a partially
   written ACTIVE slot is detected and rolled back.
-- **LED** — a single GPIO LED to signal bootloader states
-- **USB DFU via double-tap (nRF52840 only)** — two NRST resets within ~500 ms
+- =LED= — a single GPIO LED to signal bootloader states
+- =USB DFU via double-tap (nRF52840 only)= — two NRST resets within ~500 ms
   enter DFU mode (similar to Adafruit bootloader)
-- **Flash-size variants** — pre-configured for 2 MB, 4 MB, 8 MB and 16 MB
+- =Flash-size variants= — pre-configured for 2 MB, 4 MB, 8 MB and 16 MB
   (RP2040) and 1 MB (nRF52840) flash chips.
-- **UF2 builds** — =cargo make uf2-* = generates ready-to-flash =*.uf2= files.
-- **Panic handler** — on bootloader panic, blinks SOS in Morse code on the
+- =UF2 builds= — =cargo make uf2-*= generates ready-to-flash =*.uf2= files.
+- =rmk-memory.x= — each build also produces a matching linker script that RMK
+  consumes at link time for zero-config flash layout.
+- =Panic handler= — on bootloader panic, blinks SOS in Morse code on the
   LED so you know something went wrong inside the bootloader itself (as
   distinct from a firmware panic, which is handled by the app's own handler).
 
@@ -33,7 +41,7 @@ over USB via =dfu-util=.
 
 Needs a target toolchain, install with =rustup target add thumbv6m-none-eabi= (RP2040) / =rustup target add  thumbv7em-none-eabihf= (NRF52840)
 #+BEGIN_SRC sh
-cargo make build-2mb        # or build-4mb / build-8mb / build-16mb / build-nrf
+cargo make build-rp2040-2mb   # or build-rp2040-4mb / build-rp2040-8mb / build-rp2040-16mb / build-nrf52840
 #+END_SRC
 
 ** Flash via probe-rs
@@ -45,20 +53,28 @@ cargo run --release --target thumbv6m-none-eabi --features rp2040-2mb
 cargo run --release --target thumbv7em-none-eabihf --features nrf52840
 #+END_SRC
 
-** Generate a UF2 (for drag-and-drop flashing)
+** Generate a UF2 (for drag-and-drop flashing) and rmk-memory.x
+
+=build.rs= writes the linker script natively, both under the generic name
+=rmk-memory.x= and under the variant-specific name used by RMK on every
+=build.rs= run for a supported platform feature (e.g. =rp2040-2mb= also emits
+=rmk-rp2040-2mb-memory.x=). No copy step is required.
+
+Each =cargo make uf2-*= target builds the bootloader and produces a matching
+linker script:
 
 #+BEGIN_SRC sh
-cargo make uf2-2mb       # → rmk-boot-rp2040-2mb.uf2
-cargo make uf2-4mb       # → rmk-boot-rp2040-4mb.uf2
-cargo make uf2-8mb       # → rmk-boot-rp2040-8mb.uf2
-cargo make uf2-16mb      # → rmk-boot-rp2040-16mb.uf2
-cargo make uf2-nrf       # → rmk-boot-nrf52840.uf2
+cargo make uf2-rp2040-2mb  # → rmk-boot-rp2040-2mb.uf2 + rmk-rp2040-2mb-memory.x
+cargo make uf2-rp2040-4mb  # → rmk-boot-rp2040-4mb.uf2 + rmk-rp2040-4mb-memory.x
+cargo make uf2-rp2040-8mb  # → rmk-boot-rp2040-8mb.uf2 + rmk-rp2040-8mb-memory.x
+cargo make uf2-rp2040-16mb # → rmk-boot-rp2040-16mb.uf2 + rmk-rp2040-16mb-memory.x
+cargo make uf2-nrf52840    # → rmk-boot-nrf52840.uf2 + rmk-nrf52840-memory.x
 #+END_SRC
 
 Copy the =*.uf2= to the =RPI-RP2= mass-storage device that appears when you
 hold BOOTSEL while plugging in USB.
 For nRF52840 this only works if it has the Adafruit UF2 bootloader installed.
-**BE AWARE THAT RMK-BOOT OVERWRITES THAT BOOTLOADER ON THE NRF52840!**
+=BE AWARE THAT RMK-BOOT OVERWRITES THAT BOOTLOADER ON THE NRF52840!=
 
 * Entering DFU mode (nRF52840)
 
@@ -67,21 +83,22 @@ that does not implement DFU flashing or does not boot, can make flashing impossi
 (if no debugger is available) 
 Therefore the bootloader provides the possibility to flash firmware via DFU.
 
-The bootloader implements the **double-tap** convention known from the Adafruit 
+The bootloader implements the =double-tap= convention known from the Adafruit 
 bootloader for the nrf52840. Double tap NRST (reset pin) to GND to enter DFU mode, 
 to LED (P0_15 by default) starts breathing slowly to show that DFU mode is active. 
 
 * Flash-size variants
 
-Exactly one feature must be enabled at build time:
+Exactly one feature must be enabled at build time. Storage defaults to 32 KB
+(8 sectors × 4 K). To change it, edit =STORAGE_SIZE= in =build.rs= and rebuild.
 
-| Feature       | Flash size | ACTIVE | DFU    | ACTIVE start |  DFU start |
-|---------------+---------------+--------+--------+--------------+------------|
-| =rp2040-2mb=  | 2 MB       | 944 K  | 948 K  |   0x10007000 | 0x100F3000 |
-| =rp2040-4mb=  | 4 MB       | 1968 K | 1972 K |   0x10007000 | 0x101F3000 |
-| =rp2040-8mb=  | 8 MB       | 4016 K | 4020 K |   0x10007000 | 0x103F3000 |
-| =rp2040-16mb= | 16 MB      | 8112 K | 8116 K |   0x10007000 | 0x104F3000 |
-| =nrf52840=    | 1 MB       | 432 K  | 436 K  |   0x00007000 | 0x00073000 |
+| Feature       | Flash size | ACTIVE  | DFU     | ACTIVE start |  DFU start |
+|---------------+---------------+---------+---------+--------------+------------|
+| =rp2040-2mb=  | 2 MB       | 992 K   | 996 K   |   0x10007000 | 0x10100000 |
+| =rp2040-4mb=  | 4 MB       | 2016 K  | 2020 K  |   0x10007000 | 0x101FF000 |
+| =rp2040-8mb=  | 8 MB       | 4064 K  | 4068 K  |   0x10007000 | 0x103FF000 |
+| =rp2040-16mb= | 16 MB      | 8160 K  | 8164 K  |   0x10007000 | 0x107FF000 |
+| =nrf52840=    | 1 MB       | 480 K   | 484 K   |   0x00007000 | 0x0007B000 |
 
 The fixed regions for RP2040 (identical for all variants):
 
@@ -102,14 +119,44 @@ Fixed regions for nRF52840:
 
 The 2 MB variant works on boards with 4 MB, 8 MB or 16 MB flash too — it
 simply leaves the extra space unused. You must switch to a larger variant 
-only if your RMK firmware exceeds 944 KB.
+only if your RMK firmware exceeds 992 KB.
 
 * Integration with RMK
 
-rmk-boot's partition layout is the default that RMK's =[dfu]=
-configuration expects. When you compile your RMK firmware with the =dfu_rp= or
-=dfu_nrf= feature, the DFU USB interface is registered automatically and the
-flash partitioning matches rmk-boot's =memory.x=.
+RMK integrates with rmk-boot through the =rmk-memory.x= linker script. The
+file is the single source of truth — it contains both the flash memory layout
+(=MEMORY=) for the linker and the standard embassy-boot partition symbols
+(=__bootloader_*=) that both RMK and the bootloader read at runtime via
+=init_flash_from_linkerscript()= and =from_linkerfile_blocking()=.
+
+To use rmk-boot with RMK:
+
+1. Download the matching =rmk-boot-*.uf2= and =rmk-boot-*.x= from the
+   [[https://github.com/rmk-rs/rmk-boot/releases][GitHub releases]].
+2. Rename the =.x= file to =rmk-memory.x= and place it next to your =Cargo.toml=.
+3. Enable =dfu_rp= or =dfu_nrf= in RMK and add a =[dfu]= section to
+   =keyboard.toml= (only =led= / =unlock_keys= / =page_size= are needed —
+   partition offsets come from rmk-memory.x).
+
+RMK's =init_flash_from_linkerscript()= reads these linker symbols from
+=rmk-memory.x= at runtime (all values are flash-relative offsets):
+
+| Symbol                        | Description              |
+|-------------------------------+--------------------------|
+| =__bootloader_state_start=    | Boot state start         |
+| =__bootloader_state_end=      | Boot state end           |
+| =__bootloader_active_start=   | Active slot start        |
+| =__bootloader_active_end=     | Active slot end          |
+| =__bootloader_dfu_start=      | DFU download slot start  |
+| =__bootloader_dfu_end=        | DFU download slot end    |
+| =__bootloader_storage_start=  | Storage partition start  |
+| =__bootloader_storage_end=    | Storage partition end    |
+
+The =__bootloader_active_*=, =__bootloader_state_*= and =__bootloader_dfu_*=
+symbols are the same ones embassy-boot's =from_linkerfile_blocking()= reads;
+only =__bootloader_storage_*= is an RMK extension. If you build a custom
+embassy-boot bootloader, define these same symbols in your own linker script —
+RMK will pick them up automatically.
 
 After the initial flash (bootloader + RMK firmware), all subsequent updates
 can be done over USB:
@@ -243,28 +290,30 @@ PWM peripheral and releases the GPIO pin so the firmware can reclaim it.
 
 * Partition layout detail
 
-The build script (=build.rs=) generates =memory.x= at compile time based on the
-selected feature. The formula for each variant:
+The build script (=build.rs=) generates both =memory.x= (for the bootloader's
+own linking) and =rmk-memory.x= (for the firmware's linking) at compile time
+based on the selected feature. Both share the same computed values.
 
-- ACTIVE offset: =0x10007000= (fixed, after embassy-boot)
-- RP2040 ACTIVE size: =(flash_size - 28K (BOOT2 + bootloader + state) -
-  STORAGE_SIZE - 4K (1 page)) / 2=
-- nRF52840 ACTIVE size: =(flash_size - 28K (bootloader + state) - STORAGE_SIZE
-  - 4K (1 page)) / 2=
+The formula for each variant (=STORAGE_SIZE= defaults to 32 K):
+
+- ACTIVE offset: =0x10007000= (RP2040) / =0x00007000= (nRF52840)
+- ACTIVE size: =(flash_size - 28K - STORAGE_SIZE - 4K) / 2
 - DFU offset: =ACTIVE offset + ACTIVE size=
-- DFU size: =active_size + 4 K= (one extra page for embassy-boot's swap
-  algorithm)
+- DFU size: =ACTIVE size + 4 K= (one extra page for embassy-boot's swap algorithm)
 
-The linker symbols that embassy-boot reads:
+The =rmk-memory.x= file exposes these values as linker symbols that RMK's
+=init_flash_from_linkerscript()= reads at runtime (all flash-relative offsets):
 
-| Symbol                     | Value |
-|----------------------------+-------|
-| =__bootloader_state_start=  | state offset relative to BOOT2 base |
-| =__bootloader_state_end=    | end of state partition |
-| =__bootloader_active_start= | ACTIVE offset relative to BOOT2 base |
-| =__bootloader_active_end=   | end of ACTIVE partition |
-| =__bootloader_dfu_start=    | DFU offset relative to BOOT2 base |
-| =__bootloader_dfu_end=      | end of DFU partition |
+| Symbol                        | Description              |
+|-------------------------------+--------------------------|
+| =__bootloader_state_start=    | Boot state start         |
+| =__bootloader_state_end=      | Boot state end           |
+| =__bootloader_active_start=   | Active slot start        |
+| =__bootloader_active_end=     | Active slot end          |
+| =__bootloader_dfu_start=      | DFU download slot start  |
+| =__bootloader_dfu_end=        | DFU download slot end    |
+| =__bootloader_storage_start=  | Storage partition start  |
+| =__bootloader_storage_end=    | Storage partition end    |
 
 * Testing the DFU→ACTIVE copy manually (for developers)
 
@@ -275,7 +324,7 @@ cargo build
 arm-none-eabi-objcopy -O binary target/thumbv6m-none-eabi/debug/firmware firmware.bin
 
 # 2. Write it to the DFU partition
-probe-rs download --chip RP2040 --binary-format bin --base-address 0x10087000 firmware.bin
+probe-rs download --chip RP2040 --binary-format bin --base-address 0x100FF000 firmware.bin
 
 # 3. Set the SWAP magic in the state partition
 python3 -c "open('state_swap.bin', 'wb').write(b'\xF0' + b'\xFF'*4095)"
@@ -284,10 +333,10 @@ python3 -c "open('state_swap.bin', 'wb').write(b'\xF0' + b'\xFF'*4095)"
 probe-rs download --chip RP2040 --binary-format bin --base-address 0x10006000 state_swap.bin
 
 # 5. Power-cycle the board
-#    → LED goes solid for 1 s (forward swap in progress)
-#    → LED fades (copy in progress)
-#    → 5 quick blinks (copy done)
-#    → new firmware boots
+#    -> LED goes solid for 1 s (forward swap in progress)
+#    -> LED fades (copy in progress)
+#    -> 5 quick blinks (copy done)
+#    -> new firmware boots
 #+END_SRC
 
 * Notes
@@ -299,4 +348,3 @@ probe-rs download --chip RP2040 --binary-format bin --base-address 0x10006000 st
 - If you use the =Pico W= board, the on-board CYW43 wireless LED is not
   connected to a normal GPIO — pick a different pin such as =GPIO 16= (the
   default) for an external LED.
-
