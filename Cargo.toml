@@ -25,9 +25,8 @@ embassy-usb-dfu = { version = "0.3", default-features = false, features = [
     "cortex-m",
 ], optional = true }
 
-# nRF52840
+# nRF52
 embassy-nrf = { version = "0.10", features = [
-    "nrf52840",
     "time-driver-rtc1",
     "unstable-pac",
 ], optional = true }
@@ -39,7 +38,9 @@ rp2040-2mb = ["rp2040"]
 rp2040-4mb = ["rp2040"]
 rp2040-8mb = ["rp2040"]
 rp2040-16mb = ["rp2040"]
-nrf52840 = ["embassy-nrf", "cortex-m/critical-section-single-core", "embassy-usb", "embassy-usb-dfu"]
+nrf52840 = ["embassy-nrf", "embassy-nrf/nrf52840", "cortex-m/critical-section-single-core", "embassy-usb", "embassy-usb-dfu"]
+nrf52833 = ["embassy-nrf", "embassy-nrf/nrf52833", "cortex-m/critical-section-single-core", "embassy-usb", "embassy-usb-dfu"]
+noswap = []
 
 [profile.release]
 opt-level = "z"

@@ -6,16 +6,16 @@ use embassy_sync::blocking_mutex::Mutex;
 static MS: Mutex<CriticalSectionRawMutex, Cell<u32>> = Mutex::new(Cell::new(0));
 static PERIOD: Mutex<CriticalSectionRawMutex, Cell<u32>> = Mutex::new(Cell::new(0));
 
-// ── nRF52840 ──
-#[cfg(feature = "nrf52840")]
+// ── nRF52 ──
+#[cfg(any(feature = "nrf52840", feature = "nrf52833"))]
 use embassy_nrf::pwm::{DutyCycle, SimplePwm};
-#[cfg(feature = "nrf52840")]
+#[cfg(any(feature = "nrf52840", feature = "nrf52833"))]
 type PwmDev = SimplePwm<'static>;
 
-#[cfg(feature = "nrf52840")]
+#[cfg(any(feature = "nrf52840", feature = "nrf52833"))]
 static PWM: Mutex<CriticalSectionRawMutex, RefCell<Option<PwmDev>>> = Mutex::new(RefCell::new(None));
 
-#[cfg(feature = "nrf52840")]
+#[cfg(any(feature = "nrf52840", feature = "nrf52833"))]
 fn set_hw_duty(duty: u16) {
     PWM.lock(|c| {
         if let Some(ref mut pwm) = *c.borrow_mut() {
@@ -83,7 +83,7 @@ pub fn set_raw(on: bool) {
 
 /// Set PWM duty cycle directly (0-255).
 /// Use this from a main loop instead of relying on SysTick.
-#[cfg(feature = "nrf52840")]
+#[cfg(any(feature = "nrf52840", feature = "nrf52833"))]
 pub fn set_duty(duty: u8) {
     set_hw_duty(duty as u16);
 }

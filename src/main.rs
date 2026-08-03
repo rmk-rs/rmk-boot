@@ -4,8 +4,11 @@
 // ---------------------------------------------------------------------------
 // Feature-exclusion checks
 // ---------------------------------------------------------------------------
-#[cfg(all(feature = "rp2040", feature = "nrf52840"))]
-compile_error!("rp2040 and nrf52840 features are mutually exclusive");
+#[cfg(all(feature = "rp2040", any(feature = "nrf52840", feature = "nrf52833")))]
+compile_error!("rp2040 and nRF52 features are mutually exclusive");
+
+#[cfg(all(feature = "nrf52840", feature = "nrf52833"))]
+compile_error!("nrf52840 and nrf52833 features are mutually exclusive");
 
 #[cfg(feature = "rp2040")]
 const _: () = {
@@ -37,9 +40,9 @@ const _: () = {
 // ---------------------------------------------------------------------------
 #[cfg(feature = "rp2040")]
 mod rp2040;
-#[cfg(feature = "nrf52840")]
+#[cfg(any(feature = "nrf52840", feature = "nrf52833"))]
 mod nrf52840;
-#[cfg(feature = "nrf52840")]
+#[cfg(any(feature = "nrf52840", feature = "nrf52833"))]
 mod dfu;
 
 mod led_pwm;
@@ -64,9 +67,9 @@ const PAGE_SIZE: usize = 4096;
 #[cfg(feature = "rp2040")]
 const WRITE_SIZE: usize = 1;
 
-#[cfg(feature = "nrf52840")]
+#[cfg(any(feature = "nrf52840", feature = "nrf52833"))]
 const PAGE_SIZE: usize = 4096;
-#[cfg(feature = "nrf52840")]
+#[cfg(any(feature = "nrf52840", feature = "nrf52833"))]
 const WRITE_SIZE: usize = 4;
 
 const STATE_ERASE_VALUE: u8 = 0xFF;
@@ -86,9 +89,9 @@ const LETTER_GAP_MS: u64 = 450;
 const WORD_GAP_MS: u64 = 1050;
 
 const SWAP_BREATHE_MS: u32 = 300;
-#[cfg(feature = "nrf52840")]
+#[cfg(any(feature = "nrf52840", feature = "nrf52833"))]
 const DFU_BREATHE_MS: u32 = 3000;
-#[cfg(feature = "nrf52840")]
+#[cfg(any(feature = "nrf52840", feature = "nrf52833"))]
 const DTAP_SIGNAL_MS: u64 = 500;
 
 // ---------------------------------------------------------------------------
@@ -99,7 +102,7 @@ fn platform_run() -> ! {
     rp2040::run()
 }
 
-#[cfg(feature = "nrf52840")]
+#[cfg(any(feature = "nrf52840", feature = "nrf52833"))]
 fn platform_run() -> ! {
     nrf52840::run()
 }

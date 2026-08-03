@@ -68,12 +68,12 @@ cp rmk-boot.x rmk-boot-rp2040-16mb.x
 '''
 ]
 
-[tasks.build-nrf]
+[tasks.build-nrf52840]
 command = "cargo"
 args = ["build", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52840"]
 
-[tasks.copy-x-nrf]
-dependencies = ["build-nrf"]
+[tasks.copy-x-nrf52840]
+dependencies = ["build-nrf52840"]
 script = [
 '''
 if [ ! -f rmk-boot.x ]; then
@@ -104,8 +104,8 @@ dependencies = ["install-llvm-tools", "build-16mb"]
 command = "cargo"
 args = ["objcopy", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-16mb", "--", "-O", "ihex", "rmk-boot-rp2040-16mb.hex"]
 
-[tasks.objcopy-nrf]
-dependencies = ["install-llvm-tools", "build-nrf"]
+[tasks.objcopy-nrf52840]
+dependencies = ["install-llvm-tools", "build-nrf52840"]
 command = "cargo"
 args = ["objcopy", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52840", "--", "-O", "ihex", "rmk-boot-nrf52840.hex"]
 
@@ -129,10 +129,194 @@ dependencies = ["copy-x-16mb", "objcopy-16mb"]
 command = "cargo"
 args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-16mb.hex", "--output-path", "rmk-boot-rp2040-16mb.uf2", "--family", "rp2040"]
 
-[tasks.uf2-nrf]
-dependencies = ["copy-x-nrf", "objcopy-nrf"]
+[tasks.build-nrf52833]
+command = "cargo"
+args = ["build", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52833"]
+
+[tasks.copy-x-nrf52833]
+dependencies = ["build-nrf52833"]
+script = [
+'''
+if [ ! -f rmk-boot.x ]; then
+    touch build.rs
+    cargo build --release --target thumbv7em-none-eabihf --features nrf52833
+fi
+cp rmk-boot.x rmk-boot-nrf52833.x
+'''
+]
+
+[tasks.objcopy-nrf52833]
+dependencies = ["install-llvm-tools", "build-nrf52833"]
+command = "cargo"
+args = ["objcopy", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52833", "--", "-O", "ihex", "rmk-boot-nrf52833.hex"]
+
+[tasks.uf2-nrf52833]
+dependencies = ["copy-x-nrf52833", "objcopy-nrf52833"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-nrf52833.hex", "--output-path", "rmk-boot-nrf52833.uf2", "--family", "0x621E937A"]
+
+[tasks.uf2-nrf52840]
+dependencies = ["copy-x-nrf52840", "objcopy-nrf52840"]
 command = "cargo"
 args = ["hex-to-uf2", "--input-path", "rmk-boot-nrf52840.hex", "--output-path", "rmk-boot-nrf52840.uf2", "--family", "nrf52840"]
 
 [tasks.uf2-all]
-dependencies = ["uf2-2mb", "uf2-4mb", "uf2-8mb", "uf2-16mb", "uf2-nrf"]
+dependencies = ["uf2-2mb", "uf2-4mb", "uf2-8mb", "uf2-16mb", "uf2-nrf52840", "uf2-nrf52833", "uf2-2mb-noswap", "uf2-4mb-noswap", "uf2-8mb-noswap", "uf2-16mb-noswap", "uf2-nrf52840-noswap", "uf2-nrf52833-noswap"]
+
+# ── noswap variants ──
+
+[tasks.build-2mb-noswap]
+command = "cargo"
+args = ["build", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-2mb,noswap"]
+
+[tasks.copy-x-2mb-noswap]
+dependencies = ["build-2mb-noswap"]
+script = [
+'''
+if [ ! -f rmk-boot.x ]; then
+    touch build.rs
+    cargo build --release --target thumbv6m-none-eabi --features rp2040-2mb,noswap
+fi
+cp rmk-boot.x rmk-boot-rp2040-2mb-noswap.x
+'''
+]
+
+[tasks.objcopy-2mb-noswap]
+dependencies = ["install-llvm-tools", "build-2mb-noswap"]
+command = "cargo"
+args = ["objcopy", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-2mb,noswap", "--", "-O", "ihex", "rmk-boot-rp2040-2mb-noswap.hex"]
+
+[tasks.uf2-2mb-noswap]
+dependencies = ["copy-x-2mb-noswap", "objcopy-2mb-noswap"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-2mb-noswap.hex", "--output-path", "rmk-boot-rp2040-2mb-noswap.uf2", "--family", "rp2040"]
+
+[tasks.build-4mb-noswap]
+command = "cargo"
+args = ["build", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-4mb,noswap"]
+
+[tasks.copy-x-4mb-noswap]
+dependencies = ["build-4mb-noswap"]
+script = [
+'''
+if [ ! -f rmk-boot.x ]; then
+    touch build.rs
+    cargo build --release --target thumbv6m-none-eabi --features rp2040-4mb,noswap
+fi
+cp rmk-boot.x rmk-boot-rp2040-4mb-noswap.x
+'''
+]
+
+[tasks.objcopy-4mb-noswap]
+dependencies = ["install-llvm-tools", "build-4mb-noswap"]
+command = "cargo"
+args = ["objcopy", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-4mb,noswap", "--", "-O", "ihex", "rmk-boot-rp2040-4mb-noswap.hex"]
+
+[tasks.uf2-4mb-noswap]
+dependencies = ["copy-x-4mb-noswap", "objcopy-4mb-noswap"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-4mb-noswap.hex", "--output-path", "rmk-boot-rp2040-4mb-noswap.uf2", "--family", "rp2040"]
+
+[tasks.build-8mb-noswap]
+command = "cargo"
+args = ["build", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-8mb,noswap"]
+
+[tasks.copy-x-8mb-noswap]
+dependencies = ["build-8mb-noswap"]
+script = [
+'''
+if [ ! -f rmk-boot.x ]; then
+    touch build.rs
+    cargo build --release --target thumbv6m-none-eabi --features rp2040-8mb,noswap
+fi
+cp rmk-boot.x rmk-boot-rp2040-8mb-noswap.x
+'''
+]
+
+[tasks.objcopy-8mb-noswap]
+dependencies = ["install-llvm-tools", "build-8mb-noswap"]
+command = "cargo"
+args = ["objcopy", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-8mb,noswap", "--", "-O", "ihex", "rmk-boot-rp2040-8mb-noswap.hex"]
+
+[tasks.uf2-8mb-noswap]
+dependencies = ["copy-x-8mb-noswap", "objcopy-8mb-noswap"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-8mb-noswap.hex", "--output-path", "rmk-boot-rp2040-8mb-noswap.uf2", "--family", "rp2040"]
+
+[tasks.build-16mb-noswap]
+command = "cargo"
+args = ["build", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-16mb,noswap"]
+
+[tasks.copy-x-16mb-noswap]
+dependencies = ["build-16mb-noswap"]
+script = [
+'''
+if [ ! -f rmk-boot.x ]; then
+    touch build.rs
+    cargo build --release --target thumbv6m-none-eabi --features rp2040-16mb,noswap
+fi
+cp rmk-boot.x rmk-boot-rp2040-16mb-noswap.x
+'''
+]
+
+[tasks.objcopy-16mb-noswap]
+dependencies = ["install-llvm-tools", "build-16mb-noswap"]
+command = "cargo"
+args = ["objcopy", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-16mb,noswap", "--", "-O", "ihex", "rmk-boot-rp2040-16mb-noswap.hex"]
+
+[tasks.uf2-16mb-noswap]
+dependencies = ["copy-x-16mb-noswap", "objcopy-16mb-noswap"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-16mb-noswap.hex", "--output-path", "rmk-boot-rp2040-16mb-noswap.uf2", "--family", "rp2040"]
+
+[tasks.build-nrf52840-noswap]
+command = "cargo"
+args = ["build", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52840,noswap"]
+
+[tasks.copy-x-nrf52840-noswap]
+dependencies = ["build-nrf52840-noswap"]
+script = [
+'''
+if [ ! -f rmk-boot.x ]; then
+    touch build.rs
+    cargo build --release --target thumbv7em-none-eabihf --features nrf52840,noswap
+fi
+cp rmk-boot.x rmk-boot-nrf52840-noswap.x
+'''
+]
+
+[tasks.objcopy-nrf52840-noswap]
+dependencies = ["install-llvm-tools", "build-nrf52840-noswap"]
+command = "cargo"
+args = ["objcopy", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52840,noswap", "--", "-O", "ihex", "rmk-boot-nrf52840-noswap.hex"]
+
+[tasks.uf2-nrf52840-noswap]
+dependencies = ["copy-x-nrf52840-noswap", "objcopy-nrf52840-noswap"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-nrf52840-noswap.hex", "--output-path", "rmk-boot-nrf52840-noswap.uf2", "--family", "nrf52840"]
+
+[tasks.build-nrf52833-noswap]
+command = "cargo"
+args = ["build", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52833,noswap"]
+
+[tasks.copy-x-nrf52833-noswap]
+dependencies = ["build-nrf52833-noswap"]
+script = [
+'''
+if [ ! -f rmk-boot.x ]; then
+    touch build.rs
+    cargo build --release --target thumbv7em-none-eabihf --features nrf52833,noswap
+fi
+cp rmk-boot.x rmk-boot-nrf52833-noswap.x
+'''
+]
+
+[tasks.objcopy-nrf52833-noswap]
+dependencies = ["install-llvm-tools", "build-nrf52833-noswap"]
+command = "cargo"
+args = ["objcopy", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52833,noswap", "--", "-O", "ihex", "rmk-boot-nrf52833-noswap.hex"]
+
+[tasks.uf2-nrf52833-noswap]
+dependencies = ["copy-x-nrf52833-noswap", "objcopy-nrf52833-noswap"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-nrf52833-noswap.hex", "--output-path", "rmk-boot-nrf52833-noswap.uf2", "--family", "0x621E937A"]
