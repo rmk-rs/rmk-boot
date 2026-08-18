@@ -69,10 +69,25 @@ dependencies = ["objcopy-rp2040-16mb"]
 command = "cargo"
 args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-16mb.hex", "--output-path", "rmk-boot-rp2040-16mb.uf2", "--family", "rp2040"]
 
+[tasks.build-nrf52833]
+command = "cargo"
+args = ["build", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52833"]
+
+[tasks.objcopy-nrf52833]
+dependencies = ["install-llvm-tools", "build-nrf52833"]
+command = "cargo"
+args = ["objcopy", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52833", "--", "-O", "ihex", "rmk-boot-nrf52833.hex"]
+
+[tasks.uf2-nrf52833]
+dependencies = ["objcopy-nrf52833"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-nrf52833.hex", "--output-path", "rmk-boot-nrf52833.uf2", "--family", "nrf52833"]
+
 [tasks.uf2-nrf52840]
 dependencies = ["objcopy-nrf52840"]
 command = "cargo"
 args = ["hex-to-uf2", "--input-path", "rmk-boot-nrf52840.hex", "--output-path", "rmk-boot-nrf52840.uf2", "--family", "nrf52840"]
 
 [tasks.uf2-all]
-dependencies = ["uf2-rp2040-2mb", "uf2-rp2040-4mb", "uf2-rp2040-8mb", "uf2-rp2040-16mb", "uf2-nrf52840"]
+dependencies = ["uf2-rp2040-2mb", "uf2-rp2040-4mb", "uf2-rp2040-8mb", "uf2-rp2040-16mb", "uf2-nrf52840", "uf2-nrf52833"]
+

@@ -22,8 +22,12 @@ jobs:
       - name: Build all UF2 variants
         run: cargo make uf2-all
 
-      - name: Copy nRF ELF
-        run: cp target/thumbv7em-none-eabihf/release/rmk-boot rmk-boot-nrf52840.elf
+      - name: Copy nRF ELFs
+        run: |
+          cargo build --release --target thumbv7em-none-eabihf --features nrf52840
+          cp target/thumbv7em-none-eabihf/release/rmk-boot rmk-boot-nrf52840.elf
+          cargo build --release --target thumbv7em-none-eabihf --features nrf52833
+          cp target/thumbv7em-none-eabihf/release/rmk-boot rmk-boot-nrf52833.elf
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v3
@@ -33,5 +37,6 @@ jobs:
             *.hex
             *-memory.x
             rmk-boot-nrf52840.elf
+            rmk-boot-nrf52833.elf
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
