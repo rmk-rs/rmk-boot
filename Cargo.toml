@@ -41,6 +41,7 @@ rp2040-16mb = ["rp2040"]
 nrf528xx = ["embassy-nrf", "cortex-m/critical-section-single-core", "embassy-usb", "embassy-usb-dfu"]
 nrf52840 = ["nrf528xx", "embassy-nrf/nrf52840"]
 nrf52833 = ["nrf528xx", "embassy-nrf/nrf52833"]
+noswap = []
 
 [profile.release]
 opt-level = "z"

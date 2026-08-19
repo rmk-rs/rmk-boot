@@ -1,4 +1,4 @@
-use embassy_boot::{BootLoader, BootLoaderConfig, State};
+use embassy_boot::BootLoaderConfig;
 use embassy_nrf::nvmc::Nvmc;
 use embassy_nrf::pwm::{Prescaler, SimpleConfig, SimplePwm};
 
@@ -55,32 +55,13 @@ pub fn run() -> ! {
     }
 
     // Phase 2 — normal boot flow
+    #[cfg_attr(feature = "noswap", allow(unused_variables, unused_mut))]
     let mut config =
         BootLoaderConfig::from_linkerfile_blocking(&flash_mutex, &flash_mutex, &flash_mutex);
     let active_offset = config.active.offset();
 
-    let mut state_word = [0u8; WRITE_SIZE];
-    config.state.read(0, &mut state_word).unwrap();
-    let current_state = State::from(&state_word[..]);
-
-    if current_state == State::Swap {
-        let page_count = config.active.capacity() / PAGE_SIZE;
-        let progress = current_progress(&mut config.state);
-        let is_swapped = progress >= page_count * 2;
-
-        if !is_swapped {
-            led_pwm::set_raw(true);
-            block_for(Duration::from_millis(PRE_SWAP_MS));
-            led_pwm::set_raw(false);
-        } else {
-            for _ in 0..PRE_REVERT_COUNT {
-                led_pwm::set_raw(true);
-                block_for(Duration::from_millis(PRE_REVERT_BLINK_MS));
-                led_pwm::set_raw(false);
-                block_for(Duration::from_millis(PRE_REVERT_BLINK_MS));
-            }
-        }
-    } else {
+    #[cfg(feature = "noswap")]
+    {
         block_for(Duration::from_millis(HB_HALF_MS));
         for _ in 0..HB_CYCLES {
             led_pwm::set_raw(true);
@@ -88,40 +69,86 @@ pub fn run() -> ! {
             led_pwm::set_raw(false);
             block_for(Duration::from_millis(HB_HALF_MS));
         }
-    }
 
-    if current_state == State::Swap {
-        let page_count = config.active.capacity() / PAGE_SIZE;
-        let progress = current_progress(&mut config.state);
-        let is_swapped = progress >= page_count * 2;
-        if !is_swapped {
-            led_pwm::start(SWAP_BREATHE_MS);
+        let mut syst = unsafe { cortex_m::Peripherals::steal() }.SYST;
+        syst.disable_interrupt();
+        syst.disable_counter();
+        led_pwm::deinit();
+
+        unsafe {
+            let vector_table = active_offset as *const u32;
+            cortex_m::asm::bootload(vector_table)
         }
     }
 
-    let mut page = [0u8; PAGE_SIZE];
-    let mut bl = BootLoader::new(config);
-    let state = bl.prepare_boot(&mut page).unwrap_or(State::Boot);
+    #[cfg(not(feature = "noswap"))]
+    {
+        use embassy_boot::{BootLoader, State};
 
-    led_pwm::stop();
+        let mut state_word = [0u8; WRITE_SIZE];
+        config.state.read(0, &mut state_word).unwrap();
+        let current_state = State::from(&state_word[..]);
 
-    if state == State::Swap {
-        for _ in 0..POST_SWAP_COUNT {
-            led_pwm::set_raw(true);
-            block_for(Duration::from_millis(PRE_REVERT_BLINK_MS));
-            led_pwm::set_raw(false);
-            block_for(Duration::from_millis(PRE_REVERT_BLINK_MS));
+        if current_state == State::Swap {
+            let page_count = config.active.capacity() / PAGE_SIZE;
+            let progress = current_progress(&mut config.state);
+            let is_swapped = progress >= page_count * 2;
+
+            if !is_swapped {
+                led_pwm::set_raw(true);
+                block_for(Duration::from_millis(PRE_SWAP_MS));
+                led_pwm::set_raw(false);
+            } else {
+                for _ in 0..PRE_REVERT_COUNT {
+                    led_pwm::set_raw(true);
+                    block_for(Duration::from_millis(PRE_REVERT_BLINK_MS));
+                    led_pwm::set_raw(false);
+                    block_for(Duration::from_millis(PRE_REVERT_BLINK_MS));
+                }
+            }
+        } else {
+            block_for(Duration::from_millis(HB_HALF_MS));
+            for _ in 0..HB_CYCLES {
+                led_pwm::set_raw(true);
+                block_for(Duration::from_millis(HB_HALF_MS));
+                led_pwm::set_raw(false);
+                block_for(Duration::from_millis(HB_HALF_MS));
+            }
         }
-    }
 
-    // Disable SysTick and PWM before handing over to firmware
-    let mut syst = unsafe { cortex_m::Peripherals::steal() }.SYST;
-    syst.disable_interrupt();
-    syst.disable_counter();
-    led_pwm::deinit();
+        if current_state == State::Swap {
+            let page_count = config.active.capacity() / PAGE_SIZE;
+            let progress = current_progress(&mut config.state);
+            let is_swapped = progress >= page_count * 2;
+            if !is_swapped {
+                led_pwm::start(SWAP_BREATHE_MS);
+            }
+        }
 
-    unsafe {
-        let vector_table = active_offset as *const u32;
-        cortex_m::asm::bootload(vector_table)
+        let mut page = [0u8; PAGE_SIZE];
+        let mut bl = BootLoader::new(config);
+        let state = bl.prepare_boot(&mut page).unwrap_or(State::Boot);
+
+        led_pwm::stop();
+
+        if state == State::Swap {
+            for _ in 0..POST_SWAP_COUNT {
+                led_pwm::set_raw(true);
+                block_for(Duration::from_millis(PRE_REVERT_BLINK_MS));
+                led_pwm::set_raw(false);
+                block_for(Duration::from_millis(PRE_REVERT_BLINK_MS));
+            }
+        }
+
+        // Disable SysTick and PWM before handing over to firmware
+        let mut syst = unsafe { cortex_m::Peripherals::steal() }.SYST;
+        syst.disable_interrupt();
+        syst.disable_counter();
+        led_pwm::deinit();
+
+        unsafe {
+            let vector_table = active_offset as *const u32;
+            cortex_m::asm::bootload(vector_table)
+        }
     }
 }

@@ -28,6 +28,11 @@ matching =memory.x= needed.
   enter DFU mode (similar to Adafruit bootloader)
 - **Flash-size variants** — pre-configured for 2 MB, 4 MB, 8 MB and 16 MB
   (RP2040), 1 MB (nRF52840), and 512 KB (nRF52833) flash chips.
+- **noswap mode** — build with =noswap= feature to disable the swap mechanism
+  entirely. The bootloader always boots directly into ACTIVE (no state checks,
+  no DFU→ACTIVE copy). Double-tap DFU still works and writes directly to
+  ACTIVE instead of a separate DFU slot. Ideal for smaller flash chips where
+  RMK is too large for a dual-slot layout.
 - **UF2 builds** — =cargo make uf2-*= generates ready-to-flash =*.uf2= files.
 - **rmk-memory.x** — each build also produces a matching linker script that RMK
   consumes at link time for zero-config flash layout.
@@ -74,6 +79,9 @@ cargo make uf2-nrf52840    # → rmk-boot-nrf52840.uf2 + rmk-nrf52840-memory.x
 cargo make uf2-nrf52833    # → rmk-boot-nrf52833.uf2 + rmk-nrf52833-memory.x
 #+END_SRC
 
+All variants also have =*-noswap= counterparts (e.g. =uf2-nrf52833-noswap=) that
+skip the DFU→ACTIVE swap and boot directly into ACTIVE.
+
 Copy the =*.uf2= to the =RPI-RP2= mass-storage device that appears when you
 hold BOOTSEL while plugging in USB.
 For nRF52 this only works if the chip has the Adafruit UF2 bootloader installed.
@@ -89,6 +97,9 @@ Therefore the bootloader provides the possibility to flash firmware via DFU.
 The bootloader implements the **double-tap** convention known from the Adafruit 
 bootloader for the nRF52. Double tap NRST (reset pin) to GND to enter DFU mode, 
 the LED (P0_15 by default) starts breathing slowly to show that DFU mode is active. 
+
+With the =noswap= feature, DFU mode writes new firmware directly to the ACTIVE
+partition instead of a separate DFU slot. 
 
 * Flash-size variants
 
@@ -180,11 +191,11 @@ See [[Changing the LED pin]] below for how to adapt them.
 
 | Pattern                                | Meaning |
 |----------------------------------------+---------|
-| 2 short blinks (≈2 Hz)                 | Normal boot — bootloader ran and jumped to ACTIVE |
-| 1 s solid on                           | Bootloader detected a pending DFU→ACTIVE swap and is about to copy |
-| Fast breathing (300 ms period) | DFU→ACTIVE copy in progress |
-| 3 short blinks (50 ms)                 | Previous forward swap completed but the new app did not call =mark_booted()= — reverting to the old ACTIVE |
-| 5 short blinks (50 ms)                 | Successful DFU→ACTIVE copy; about to jump |
+| 2 short blinks (≈2 Hz)                 | Normal boot — bootloader ran and jumped to ACTIVE. With =noswap= this is the only LED pattern on boot. |
+| 1 s solid on                           | Bootloader detected a pending DFU→ACTIVE swap and is about to copy (not present with =noswap=) |
+| Fast breathing (300 ms period) | DFU→ACTIVE copy in progress (not present with =noswap=) |
+| 3 short blinks (50 ms)                 | Previous forward swap completed but the new app did not call =mark_booted()= — reverting to the old ACTIVE (not present with =noswap=) |
+| 5 short blinks (50 ms)                 | Successful DFU→ACTIVE copy; about to jump (not present with =noswap=) |
 | Slow breathing (3 s period) | USB DFU mode active (nRF52 only) — waiting for =dfu-util= |
 | SOS (... --- ...), repeating           | Bootloader itself panicked (e.g. flash read error, invalid state partition) |
 
