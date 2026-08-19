@@ -46,8 +46,7 @@ pub fn run() -> ! {
     pwm.enable();
     led_pwm::init(pwm);
 
-    let flash_mutex: &'static _ =
-        FLASH_MUTEX.init(Mutex::new(RefCell::new(Nvmc::new(p.NVMC))));
+    let flash_mutex: &'static _ = FLASH_MUTEX.init(Mutex::new(RefCell::new(Nvmc::new(p.NVMC))));
 
     // ── Phase 1: Double-tap (similar to Adafruit BL, RAM 0x20007F7C) ──
     //
@@ -72,10 +71,16 @@ pub fn run() -> ! {
             spi_cfg.frequency = embassy_nrf::spim::Frequency::M32;
 
             let spi = Spim::new(p.TWISPI0, ExtFlashIrqs, p.P0_17, p.P0_20, p.P0_22, spi_cfg);
-            let cs = Output::new(p.P0_24, Level::High, embassy_nrf::gpio::OutputDrive::Standard);
+            let cs = Output::new(
+                p.P0_24,
+                Level::High,
+                embassy_nrf::gpio::OutputDrive::Standard,
+            );
 
             let ext_flash = crate::driver::w25q::W25qNorFlash::<_, _, { 64 * 1024 }>::new(
-                spi, cs, EXT_FLASH_SIZE,
+                spi,
+                cs,
+                EXT_FLASH_SIZE,
             );
             let ext_mutex: &'static _ = EXT_MUTEX.init(Mutex::new(RefCell::new(ext_flash)));
             crate::dfu::run_dfu_usb_ext(flash_mutex, ext_mutex, EXT_FLASH_SIZE);
@@ -96,14 +101,12 @@ pub fn run() -> ! {
 
     // Phase 2 — normal boot flow
     #[cfg(not(feature = "dfu_ext"))]
-    let (active_offset, mut config) = {
-        let config =
-            BootLoaderConfig::from_linkerfile_blocking(flash_mutex, flash_mutex, flash_mutex);
-        (config.active.offset(), config)
-    };
+    let config = BootLoaderConfig::from_linkerfile_blocking(flash_mutex, flash_mutex, flash_mutex);
+    #[cfg(not(feature = "dfu_ext"))]
+    let active_offset = config.active.offset();
 
     #[cfg(feature = "dfu_ext")]
-    let (active_offset, mut config) = {
+    let ext_mutex: &'static ExtFlashMutex = {
         use embassy_nrf::gpio::{Level, Output};
 
         let mut spi_cfg = embassy_nrf::spim::Config::default();
@@ -111,26 +114,37 @@ pub fn run() -> ! {
 
         // Default SPI pins — change if your board is wired differently
         let spi = Spim::new(p.TWISPI0, ExtFlashIrqs, p.P0_17, p.P0_20, p.P0_22, spi_cfg);
-        let cs = Output::new(p.P0_24, Level::High, embassy_nrf::gpio::OutputDrive::Standard);
-
-        let ext_flash = crate::driver::w25q::W25qNorFlash::<_, _, { 64 * 1024 }>::new(
-            spi, cs, EXT_FLASH_SIZE,
+        let cs = Output::new(
+            p.P0_24,
+            Level::High,
+            embassy_nrf::gpio::OutputDrive::Standard,
         );
-        let ext_mutex: &'static _ = EXT_MUTEX.init(Mutex::new(RefCell::new(ext_flash)));
 
+        let ext_flash =
+            crate::driver::w25q::W25qNorFlash::<_, _, { 64 * 1024 }>::new(spi, cs, EXT_FLASH_SIZE);
+        EXT_MUTEX.init(Mutex::new(RefCell::new(ext_flash)))
+    };
+
+    #[cfg(feature = "dfu_ext")]
+    let config = {
         let internal_cfg =
             BootLoaderConfig::from_linkerfile_blocking(flash_mutex, flash_mutex, flash_mutex);
-        let active_offset = internal_cfg.active.offset();
-
-        let config = BootLoaderConfig {
+        BootLoaderConfig {
             active: internal_cfg.active,
             dfu: BlockingPartition::new(ext_mutex, 0, EXT_FLASH_SIZE),
             state: internal_cfg.state,
-        };
-        (active_offset, config)
+        }
     };
 
-    info!("nrf52: active=0x{:08x}, dfu mode = {}", active_offset, cfg!(feature = "dfu_ext"));
+    #[cfg(feature = "dfu_ext")]
+    let active_offset = config.active.offset();
+
+    info!(
+        "nrf52: active=0x{:08x}, state=0x{:08x}, dfu mode = {}",
+        active_offset,
+        config.state.offset(),
+        cfg!(feature = "dfu_ext")
+    );
 
     #[cfg(feature = "noswap")]
     {
@@ -158,6 +172,7 @@ pub fn run() -> ! {
     {
         use embassy_boot::{BootLoader, State};
 
+        let mut config = config;
         let mut state_word = [0u8; WRITE_SIZE];
         config.state.read(0, &mut state_word).unwrap();
         let current_state = State::from(&state_word[..]);
@@ -228,7 +243,8 @@ pub fn run() -> ! {
                     State::DfuDetach => "DfuDetach",
                 }
             );
-            flash_mutex.lock(|c| dump_words("post active", &mut *c.borrow_mut(), active_offset as u32));
+            flash_mutex
+                .lock(|c| dump_words("post active", &mut *c.borrow_mut(), active_offset as u32));
         }
 
         led_pwm::stop();
@@ -260,9 +276,8 @@ pub fn run() -> ! {
 fn dump_words<F: embedded_storage::nor_flash::ReadNorFlash>(label: &str, flash: &mut F, off: u32) {
     let mut b = [0u8; 16];
     let _ = flash.read(off, &mut b);
-    let w: [u32; 4] = core::array::from_fn(|i| {
-        u32::from_le_bytes(b[i * 4..i * 4 + 4].try_into().unwrap())
-    });
+    let w: [u32; 4] =
+        core::array::from_fn(|i| u32::from_le_bytes(b[i * 4..i * 4 + 4].try_into().unwrap()));
     debug!(
         "  {} @0x{:06x}: {:08x} {:08x} {:08x} {:08x}",
         label, off, w[0], w[1], w[2], w[3]

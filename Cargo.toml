@@ -1,6 +1,6 @@
 [package]
 name = "rmk-boot"
-version = "0.1.0"
+version = "0.9.1"
 edition = "2024"
 
 [dependencies]
@@ -33,7 +33,7 @@ embassy-nrf = { version = "0.10", features = [
     "time-driver-rtc1",
     "unstable-pac",
 ], optional = true }
-embassy-boot = { version = "0.7" }
+embassy-boot = "0.7"
 
 # Logging (optional, opt-in via feature)
 defmt = { version = "1", default-features = false, optional = true }
@@ -68,6 +68,5 @@ dfu_ext = []
 codegen-units = 1
 lto = "fat"
 opt-level = "z"
-# debug = false
-debug = 2
+debug = false
 panic = "abort"

@@ -45,17 +45,17 @@ const _: () = {
 // ---------------------------------------------------------------------------
 // Platform modules (compile only when feature is active)
 // ---------------------------------------------------------------------------
-#[cfg(feature = "rp2040")]
-mod rp2040;
-#[cfg(feature = "nrf528xx")]
-mod nrf528xx;
 #[cfg(feature = "nrf528xx")]
 mod dfu;
+#[cfg(feature = "nrf528xx")]
+mod nrf528xx;
+#[cfg(feature = "rp2040")]
+mod rp2040;
 
-mod led_pwm;
-mod log;
 #[cfg(feature = "dfu_ext")]
 mod driver;
+mod led_pwm;
+mod log;
 
 // ---------------------------------------------------------------------------
 // Shared imports
@@ -63,38 +63,43 @@ mod driver;
 use core::cell::RefCell;
 
 use cortex_m_rt::entry;
+#[cfg(not(feature = "noswap"))]
 use embassy_embedded_hal::flash::partition::BlockingPartition;
 use embassy_sync::blocking_mutex::Mutex;
+#[cfg(not(feature = "noswap"))]
 use embassy_sync::blocking_mutex::raw::RawMutex;
-use embassy_time::{block_for, Duration};
+use embassy_time::{Duration, block_for};
+#[cfg(not(feature = "noswap"))]
 use embedded_storage::nor_flash::{NorFlash, ReadNorFlash};
 
-// Which of these are consumed varies by chip/feature combination, so allow
-// unused imports unconditionally.
-#[allow(unused_imports)]
 pub(crate) use log::{debug, error, info};
 
 // ---------------------------------------------------------------------------
 // Shared constants (cfg for platform-specific values)
 // ---------------------------------------------------------------------------
-#[cfg(feature = "rp2040")]
+#[cfg(all(feature = "rp2040", not(feature = "noswap")))]
 const PAGE_SIZE: usize = 4096;
-#[cfg(feature = "rp2040")]
+#[cfg(all(feature = "rp2040", not(feature = "noswap")))]
 const WRITE_SIZE: usize = 1;
 
-#[cfg(feature = "nrf528xx")]
+#[cfg(all(feature = "nrf528xx", not(feature = "noswap")))]
 const PAGE_SIZE: usize = 4096;
-#[cfg(feature = "nrf528xx")]
+#[cfg(all(feature = "nrf528xx", not(feature = "noswap")))]
 const WRITE_SIZE: usize = 4;
 
+#[cfg(not(feature = "noswap"))]
 const STATE_ERASE_VALUE: u8 = 0xFF;
 
 const HB_HALF_MS: u64 = 250;
 const HB_CYCLES: u32 = 2;
 
+#[cfg(not(feature = "noswap"))]
 const PRE_SWAP_MS: u64 = 1000;
+#[cfg(not(feature = "noswap"))]
 const PRE_REVERT_BLINK_MS: u64 = 100;
+#[cfg(not(feature = "noswap"))]
 const PRE_REVERT_COUNT: u32 = 3;
+#[cfg(not(feature = "noswap"))]
 const POST_SWAP_COUNT: u32 = 5;
 
 const DOT_MS: u64 = 150;
@@ -103,6 +108,7 @@ const INTRA_GAP_MS: u64 = 150;
 const LETTER_GAP_MS: u64 = 450;
 const WORD_GAP_MS: u64 = 1050;
 
+#[cfg(not(feature = "noswap"))]
 const SWAP_BREATHE_MS: u32 = 300;
 #[cfg(feature = "nrf528xx")]
 const DFU_BREATHE_MS: u32 = 3000;
@@ -112,11 +118,11 @@ const DTAP_SIGNAL_MS: u64 = 500;
 const EXT_FLASH_SIZE: u32 = 8 * 1024 * 1024;
 
 /// Swap page size: with an external DFU flash the erase unit is the 64K W25Q
-/// block (and ACTIVE is sized to a multiple of it); otherwise 4K pages.
-#[cfg(feature = "dfu_ext")]
-const SWAP_PAGE_SIZE: usize = 64 * 1024;
+/// block (see `driver::w25q`); otherwise 4K pages.
+#[cfg(all(feature = "dfu_ext", not(feature = "noswap")))]
+const SWAP_PAGE_SIZE: usize = driver::w25q::SWAP_PAGE_SIZE;
 
-#[cfg(not(feature = "dfu_ext"))]
+#[cfg(all(not(feature = "dfu_ext"), not(feature = "noswap")))]
 const SWAP_PAGE_SIZE: usize = PAGE_SIZE;
 
 // ---------------------------------------------------------------------------
@@ -135,6 +141,9 @@ fn platform_run() -> ! {
 #[entry]
 fn main() -> ! {
     info!("rmk-boot {} starting", env!("CARGO_PKG_VERSION"));
+    // Unconditional debug! keeps the facade import (and its no-op macro stub)
+    // used in every feature combination.
+    debug!("logging facade active");
     platform_run()
 }
 
@@ -149,6 +158,7 @@ fn SysTick() {
 // ---------------------------------------------------------------------------
 // Shared helper: progress reader
 // ---------------------------------------------------------------------------
+#[cfg(not(feature = "noswap"))]
 fn current_progress<M: RawMutex, STATE: NorFlash + ReadNorFlash>(
     state: &mut BlockingPartition<'_, M, STATE>,
 ) -> usize {
@@ -172,10 +182,9 @@ fn current_progress<M: RawMutex, STATE: NorFlash + ReadNorFlash>(
 // ---------------------------------------------------------------------------
 // Panic handler – SOS via PWM
 // ---------------------------------------------------------------------------
-#[cfg_attr(not(feature = "defmt"), allow(unused_variables))]
 #[panic_handler]
-fn panic(info: &core::panic::PanicInfo) -> ! {
-    error!("PANIC: {}", defmt::Display2Format(info));
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    error!("PANIC: {}", defmt::Display2Format(_info));
     loop {
         for _ in 0..3 {
             led_pwm::set_raw(true);

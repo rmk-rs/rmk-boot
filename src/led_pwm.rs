@@ -1,7 +1,7 @@
 use core::cell::{Cell, RefCell};
 
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
 static MS: Mutex<CriticalSectionRawMutex, Cell<u32>> = Mutex::new(Cell::new(0));
 static PERIOD: Mutex<CriticalSectionRawMutex, Cell<u32>> = Mutex::new(Cell::new(0));
@@ -13,7 +13,8 @@ use embassy_nrf::pwm::{DutyCycle, SimplePwm};
 type PwmDev = SimplePwm<'static>;
 
 #[cfg(feature = "nrf528xx")]
-static PWM: Mutex<CriticalSectionRawMutex, RefCell<Option<PwmDev>>> = Mutex::new(RefCell::new(None));
+static PWM: Mutex<CriticalSectionRawMutex, RefCell<Option<PwmDev>>> =
+    Mutex::new(RefCell::new(None));
 
 #[cfg(feature = "nrf528xx")]
 fn set_hw_duty(duty: u16) {
@@ -31,7 +32,8 @@ use embassy_rp::pwm::{Pwm, SetDutyCycle};
 type PwmDev = Pwm<'static>;
 
 #[cfg(feature = "rp2040")]
-static PWM: Mutex<CriticalSectionRawMutex, RefCell<Option<PwmDev>>> = Mutex::new(RefCell::new(None));
+static PWM: Mutex<CriticalSectionRawMutex, RefCell<Option<PwmDev>>> =
+    Mutex::new(RefCell::new(None));
 
 #[cfg(feature = "rp2040")]
 fn set_hw_duty(duty: u16) {
@@ -66,11 +68,13 @@ pub fn tick() {
     set_hw_duty(duty);
 }
 
+#[cfg(not(feature = "noswap"))]
 pub fn start(period_ms: u32) {
     MS.lock(|m| m.set(0));
     PERIOD.lock(|p| p.set(period_ms));
 }
 
+#[cfg(not(feature = "noswap"))]
 pub fn stop() {
     set_hw_duty(0);
     PERIOD.lock(|p| p.set(0));
@@ -90,5 +94,7 @@ pub fn set_duty(duty: u8) {
 
 /// Release the PWM peripheral so the firmware can claim it.
 pub fn deinit() {
-    PWM.lock(|c| { c.borrow_mut().take(); });
+    PWM.lock(|c| {
+        c.borrow_mut().take();
+    });
 }

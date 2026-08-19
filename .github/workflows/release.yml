@@ -19,8 +19,8 @@ jobs:
       - name: Install build tools
         run: cargo install cargo-make cargo-binutils cargo-hex-to-uf2
 
-      - name: Build all UF2 variants
-        run: cargo make uf2-all
+      - name: Build release UF2 variants
+        run: cargo make uf2-release
 
       - name: Copy nRF ELFs
         run: |
@@ -32,6 +32,10 @@ jobs:
           cp target/thumbv7em-none-eabihf/release/rmk-boot rmk-boot-nrf52840-noswap.elf
           cargo build --release --target thumbv7em-none-eabihf --features nrf52833,noswap
           cp target/thumbv7em-none-eabihf/release/rmk-boot rmk-boot-nrf52833-noswap.elf
+          cargo build --release --target thumbv7em-none-eabihf --features nrf52840,dfu_ext
+          cp target/thumbv7em-none-eabihf/release/rmk-boot rmk-boot-nrf52840-dfu_ext.elf
+          cargo build --release --target thumbv7em-none-eabihf --features nrf52833,dfu_ext
+          cp target/thumbv7em-none-eabihf/release/rmk-boot rmk-boot-nrf52833-dfu_ext.elf
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v3
@@ -39,10 +43,12 @@ jobs:
           files: |
             *.uf2
             *.hex
-            *-memory.x
+            rmk-boot-*-memory.x
             rmk-boot-nrf52840.elf
             rmk-boot-nrf52833.elf
             rmk-boot-nrf52840-noswap.elf
             rmk-boot-nrf52833-noswap.elf
+            rmk-boot-nrf52840-dfu_ext.elf
+            rmk-boot-nrf52833-dfu_ext.elf
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

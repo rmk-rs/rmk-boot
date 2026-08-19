@@ -3,20 +3,20 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
-use embassy_embedded_hal::flash::partition::BlockingPartition;
+use crate::log::info;
 use embassy_boot::{BlockingFirmwareUpdater, FirmwareUpdaterConfig};
+use embassy_embedded_hal::flash::partition::BlockingPartition;
+#[cfg(feature = "dfu_ext")]
+use embassy_nrf::gpio::Output;
 use embassy_nrf::nvmc::Nvmc;
+#[cfg(feature = "dfu_ext")]
+use embassy_nrf::spim::Spim;
 use embassy_nrf::usb::vbus_detect::SoftwareVbusDetect;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::blocking_mutex::Mutex;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_usb::class::dfu::consts::DfuAttributes;
 use embassy_usb_dfu::{self as dfu, ResetImmediate};
 use embedded_storage::nor_flash::NorFlash;
-use crate::log::info;
-#[cfg(feature = "dfu_ext")]
-use embassy_nrf::gpio::Output;
-#[cfg(feature = "dfu_ext")]
-use embassy_nrf::spim::Spim;
 use static_cell::StaticCell;
 
 const BS: usize = 2048;
@@ -32,7 +32,9 @@ const USB_PRODUCT: &str = "nRF52833 DFU";
 type NativePartition = BlockingPartition<'static, NoopRawMutex, Nvmc<'static>>;
 
 #[cfg(not(feature = "dfu_ext"))]
-static DFU_STATE: StaticCell<dfu::State<'static, NativePartition, NativePartition, ResetImmediate, { BS }>> = StaticCell::new();
+static DFU_STATE: StaticCell<
+    dfu::State<'static, NativePartition, NativePartition, ResetImmediate, { BS }>,
+> = StaticCell::new();
 
 #[cfg(feature = "dfu_ext")]
 pub(crate) type ExtFlash =
@@ -40,7 +42,9 @@ pub(crate) type ExtFlash =
 #[cfg(feature = "dfu_ext")]
 type ExtPartition = BlockingPartition<'static, NoopRawMutex, ExtFlash>;
 #[cfg(feature = "dfu_ext")]
-static EXT_DFU_STATE: StaticCell<dfu::State<'static, ExtPartition, NativePartition, ResetImmediate, { BS }>> = StaticCell::new();
+static EXT_DFU_STATE: StaticCell<
+    dfu::State<'static, ExtPartition, NativePartition, ResetImmediate, { BS }>,
+> = StaticCell::new();
 
 static VBUS: StaticCell<SoftwareVbusDetect> = StaticCell::new();
 
@@ -113,19 +117,22 @@ pub fn run_dfu_nrf<D: embassy_usb::driver::Driver<'static>>(
 ///
 /// Called from main.
 #[cfg(not(feature = "dfu_ext"))]
-pub fn run_dfu_usb(
-    flash_mutex: &'static Mutex<NoopRawMutex, RefCell<Nvmc<'static>>>,
-) -> ! {
+pub fn run_dfu_usb(flash_mutex: &'static Mutex<NoopRawMutex, RefCell<Nvmc<'static>>>) -> ! {
     info!("USB DFU active (internal DFU partition)");
 
-    #[cfg_attr(not(feature = "noswap"), allow(unused_mut))]
-    let mut uc = FirmwareUpdaterConfig::from_linkerfile_blocking(flash_mutex, flash_mutex);
+    let uc = FirmwareUpdaterConfig::from_linkerfile_blocking(flash_mutex, flash_mutex);
 
     // noswap never touches the state partition, so a stale Swap marker from an
     // older layout makes write_firmware() refuse downloads (BadState). An
     // erased state page reads as State::Boot — enough to accept downloads.
     #[cfg(feature = "noswap")]
-    uc.state.erase(0, <Nvmc as NorFlash>::ERASE_SIZE as u32).unwrap();
+    let uc = {
+        let mut uc = uc;
+        uc.state
+            .erase(0, <Nvmc as NorFlash>::ERASE_SIZE as u32)
+            .unwrap();
+        uc
+    };
 
     run_dfu_usb_inner(&DFU_STATE, uc)
 }
@@ -138,10 +145,14 @@ pub fn run_dfu_usb_ext(
     ext_mutex: &'static Mutex<NoopRawMutex, RefCell<ExtFlash>>,
     ext_flash_size: u32,
 ) -> ! {
-    info!("USB DFU active (external SPI flash, size 0x{:x})", ext_flash_size);
+    info!(
+        "USB DFU active (external SPI flash, size 0x{:x})",
+        ext_flash_size
+    );
 
     let dfu_part = BlockingPartition::new(ext_mutex, 0, ext_flash_size);
-    let state_part = FirmwareUpdaterConfig::from_linkerfile_blocking(flash_mutex, flash_mutex).state;
+    let state_part =
+        FirmwareUpdaterConfig::from_linkerfile_blocking(flash_mutex, flash_mutex).state;
     let uc = FirmwareUpdaterConfig {
         dfu: dfu_part,
         state: state_part,
