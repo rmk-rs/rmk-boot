@@ -11,6 +11,8 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_usb::class::dfu::consts::DfuAttributes;
 use embassy_usb_dfu::{self as dfu, ResetImmediate};
+use embedded_storage::nor_flash::NorFlash;
+use crate::log::info;
 #[cfg(feature = "dfu_ext")]
 use embassy_nrf::gpio::Output;
 #[cfg(feature = "dfu_ext")]
@@ -20,6 +22,12 @@ use static_cell::StaticCell;
 const BS: usize = 2048;
 /// nRF52 NVMC write size — embassy-boot's `aligned` buffer requirement
 const NRF_WRITE_SIZE: usize = 4;
+
+/// USB product string reported to the host during DFU.
+#[cfg(not(feature = "nrf52833"))]
+const USB_PRODUCT: &str = "nRF52840 DFU";
+#[cfg(feature = "nrf52833")]
+const USB_PRODUCT: &str = "nRF52833 DFU";
 
 type NativePartition = BlockingPartition<'static, NoopRawMutex, Nvmc<'static>>;
 
@@ -121,8 +129,36 @@ pub fn run_dfu_usb(
 
     run_dfu_usb_inner(&DFU_STATE, uc)
 }
-    let p = unsafe { embassy_nrf::Peripherals::steal() };
 
+/// Same as [`run_dfu_usb`], but writes the DFU image to an external
+/// SPI flash instead of the internal DFU partition.
+#[cfg(feature = "dfu_ext")]
+pub fn run_dfu_usb_ext(
+    flash_mutex: &'static Mutex<NoopRawMutex, RefCell<Nvmc<'static>>>,
+    ext_mutex: &'static Mutex<NoopRawMutex, RefCell<ExtFlash>>,
+    ext_flash_size: u32,
+) -> ! {
+    info!("USB DFU active (external SPI flash, size 0x{:x})", ext_flash_size);
+
+    let dfu_part = BlockingPartition::new(ext_mutex, 0, ext_flash_size);
+    let state_part = FirmwareUpdaterConfig::from_linkerfile_blocking(flash_mutex, flash_mutex).state;
+    let uc = FirmwareUpdaterConfig {
+        dfu: dfu_part,
+        state: state_part,
+    };
+    run_dfu_usb_inner(&EXT_DFU_STATE, uc)
+}
+
+/// Shared core of the USB DFU stack – never returns.
+///
+/// The DFU partition type `D` is either the internal (linker-defined)
+/// partition or the external SPI flash partition, depending on the
+/// `dfu_ext` feature selected by the caller's `state_cell`.
+fn run_dfu_usb_inner<D: NorFlash>(
+    state_cell: &'static StaticCell<dfu::State<'static, D, NativePartition, ResetImmediate, BS>>,
+    uc: FirmwareUpdaterConfig<D, NativePartition>,
+) -> ! {
+    let p = unsafe { embassy_nrf::Peripherals::steal() };
 
     // ── USB driver (nRF USBD peripheral + VBUS detection) ──
     let vbus: &'static _ = VBUS.init(SoftwareVbusDetect::new(true, true));
@@ -130,7 +166,7 @@ pub fn run_dfu_usb(
 
     let mut usb_config = embassy_usb::Config::new(0x1209, 0x0001);
     usb_config.manufacturer = Some("rmk-boot");
-    usb_config.product = Some("nRF52840 DFU");
+    usb_config.product = Some(USB_PRODUCT);
     usb_config.serial_number = Some("123456");
     usb_config.max_power = 100;
     usb_config.composite_with_iads = false;
@@ -155,80 +191,16 @@ pub fn run_dfu_usb(
         CTL.init([0; 2048]),
     );
 
-    // ── Firmware-updater over the DFU partition (linker-defined) ──
-    let uc = FirmwareUpdaterConfig::from_linkerfile_blocking(flash_mutex, flash_mutex);
-
-    const BS: usize = 2048;
     let upd = BlockingFirmwareUpdater::new(uc, AL.init([0; NRF_WRITE_SIZE]));
-    let state = dfu::new_state::<_, _, ResetImmediate, BS>(
+    let state = dfu::new_state::<D, NativePartition, ResetImmediate, BS>(
         upd,
         DfuAttributes::CAN_DOWNLOAD | DfuAttributes::WILL_DETACH,
         ResetImmediate,
     );
-    let s: &'static mut _ = DFU_STATE.init(state);
+    let s: &'static mut _ = state_cell.init(state);
     dfu::usb_dfu::<_, _, _, _, BS>(&mut builder, s, |_| {});
 
     // ── Run USB device; never returns ──
-    let mut usb_dev = builder.build();
-    run_dfu_nrf(&mut usb_dev, crate::DFU_BREATHE_MS)
-}
-
-/// Same as [`run_dfu_usb`], but writes the DFU image to an external
-/// SPI flash instead of the internal DFU partition.
-#[cfg(feature = "dfu_ext")]
-pub fn run_dfu_usb_ext(
-    flash_mutex: &'static Mutex<NoopRawMutex, RefCell<Nvmc<'static>>>,
-    ext_mutex: &'static Mutex<NoopRawMutex, RefCell<ExtFlash>>,
-    ext_flash_size: u32,
-) -> ! {
-    let p = unsafe { embassy_nrf::Peripherals::steal() };
-
-
-    let vbus: &'static _ = VBUS.init(SoftwareVbusDetect::new(true, true));
-    let driver = embassy_nrf::usb::Driver::new(p.USBD, crate::dfu::DfuIrqs, vbus);
-
-    let mut usb_config = embassy_usb::Config::new(0x1209, 0x0001);
-    usb_config.manufacturer = Some("rmk-boot");
-    usb_config.product = Some("nRF52840 DFU");
-    usb_config.serial_number = Some("123456");
-    usb_config.max_power = 100;
-    usb_config.composite_with_iads = false;
-    usb_config.device_class = 0xFE;
-    usb_config.device_sub_class = 0x01;
-    usb_config.device_protocol = 0x01;
-
-    static CFG: StaticCell<[u8; 256]> = StaticCell::new();
-    static BOS: StaticCell<[u8; 128]> = StaticCell::new();
-    static MSOS: StaticCell<[u8; 128]> = StaticCell::new();
-    static CTL: StaticCell<[u8; 2048]> = StaticCell::new();
-    static AL: StaticCell<[u8; NRF_WRITE_SIZE]> = StaticCell::new();
-
-    let mut builder = embassy_usb::Builder::new(
-        driver,
-        usb_config,
-        CFG.init([0; 256]),
-        BOS.init([0; 128]),
-        MSOS.init([0; 128]),
-        CTL.init([0; 2048]),
-    );
-
-    let dfu_part = BlockingPartition::new(ext_mutex, 0, ext_flash_size);
-    let state_part = FirmwareUpdaterConfig::from_linkerfile_blocking(flash_mutex, flash_mutex).state;
-    let uc = FirmwareUpdaterConfig {
-        dfu: dfu_part,
-        state: state_part,
-    };
-    let upd = BlockingFirmwareUpdater::new(uc, AL.init([0; NRF_WRITE_SIZE]));
-
-    const BS: usize = 2048;
-    let state = dfu::new_state::<_, _, ResetImmediate, BS>(
-        upd,
-        DfuAttributes::CAN_DOWNLOAD | DfuAttributes::WILL_DETACH,
-        ResetImmediate,
-    );
-    let s: &'static mut _ = EXT_DFU_STATE.init(state);
-    dfu::usb_dfu::<_, _, _, _, BS>(&mut builder, s, |_| {});
-
     let mut usb_dev = builder.build();
     run_dfu_nrf(&mut usb_dev, crate::DFU_BREATHE_MS)
 }

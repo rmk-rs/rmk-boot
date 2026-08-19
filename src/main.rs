@@ -1,6 +1,10 @@
 #![no_std]
 #![no_main]
 
+// Logging over RTT (opt-in via the `defmt` feature)
+#[cfg(feature = "defmt")]
+use defmt_rtt as _;
+
 // ---------------------------------------------------------------------------
 // Feature-exclusion checks
 // ---------------------------------------------------------------------------
@@ -49,6 +53,7 @@ mod nrf528xx;
 mod dfu;
 
 mod led_pwm;
+mod log;
 #[cfg(feature = "dfu_ext")]
 mod driver;
 
@@ -60,10 +65,14 @@ use core::cell::RefCell;
 use cortex_m_rt::entry;
 use embassy_embedded_hal::flash::partition::BlockingPartition;
 use embassy_sync::blocking_mutex::Mutex;
-#[cfg(not(feature = "noswap"))]
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_time::{block_for, Duration};
 use embedded_storage::nor_flash::{NorFlash, ReadNorFlash};
+
+// Which of these are consumed varies by chip/feature combination, so allow
+// unused imports unconditionally.
+#[allow(unused_imports)]
+pub(crate) use log::{debug, error, info};
 
 // ---------------------------------------------------------------------------
 // Shared constants (cfg for platform-specific values)
@@ -103,11 +112,11 @@ const DTAP_SIGNAL_MS: u64 = 500;
 const EXT_FLASH_SIZE: u32 = 8 * 1024 * 1024;
 
 /// Swap page size: with an external DFU flash the erase unit is the 64K W25Q
-/// block (see `driver::w25q`); otherwise 4K pages.
-#[cfg(all(feature = "dfu_ext", not(feature = "noswap")))]
-const SWAP_PAGE_SIZE: usize = driver::w25q::SWAP_PAGE_SIZE;
+/// block (and ACTIVE is sized to a multiple of it); otherwise 4K pages.
+#[cfg(feature = "dfu_ext")]
+const SWAP_PAGE_SIZE: usize = 64 * 1024;
 
-#[cfg(all(not(feature = "dfu_ext"), not(feature = "noswap")))]
+#[cfg(not(feature = "dfu_ext"))]
 const SWAP_PAGE_SIZE: usize = PAGE_SIZE;
 
 // ---------------------------------------------------------------------------
@@ -125,6 +134,7 @@ fn platform_run() -> ! {
 
 #[entry]
 fn main() -> ! {
+    info!("rmk-boot {} starting", env!("CARGO_PKG_VERSION"));
     platform_run()
 }
 
@@ -162,8 +172,10 @@ fn current_progress<M: RawMutex, STATE: NorFlash + ReadNorFlash>(
 // ---------------------------------------------------------------------------
 // Panic handler – SOS via PWM
 // ---------------------------------------------------------------------------
+#[cfg_attr(not(feature = "defmt"), allow(unused_variables))]
 #[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    error!("PANIC: {}", defmt::Display2Format(info));
     loop {
         for _ in 0..3 {
             led_pwm::set_raw(true);

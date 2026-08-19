@@ -61,6 +61,7 @@ pub fn run() -> ! {
     let magic = unsafe { core::ptr::read_volatile(DBL_MEM) };
 
     if reset_pin && magic == DBL_MAGIC {
+        info!("double tap detected: entering USB DFU mode");
         unsafe { core::ptr::write_volatile(DBL_MEM, 0) };
 
         #[cfg(feature = "dfu_ext")]
@@ -102,7 +103,6 @@ pub fn run() -> ! {
     };
 
     #[cfg(feature = "dfu_ext")]
-    #[cfg_attr(feature = "noswap", allow(unused_variables, unused_mut))]
     let (active_offset, mut config) = {
         use embassy_nrf::gpio::{Level, Output};
 
@@ -130,9 +130,11 @@ pub fn run() -> ! {
         (active_offset, config)
     };
 
+    info!("nrf52: active=0x{:08x}, dfu mode = {}", active_offset, cfg!(feature = "dfu_ext"));
 
     #[cfg(feature = "noswap")]
     {
+        info!("noswap: booting ACTIVE directly");
         block_for(Duration::from_millis(HB_HALF_MS));
         for _ in 0..HB_CYCLES {
             led_pwm::set_raw(true);
@@ -161,8 +163,11 @@ pub fn run() -> ! {
         let current_state = State::from(&state_word[..]);
 
         if current_state == State::Swap {
+            info!("swap in progress");
             let progress = current_progress(&mut config.state);
-            let is_swapped = progress >= (config.active.capacity() / SWAP_PAGE_SIZE) * 2;
+            let pages = (config.active.capacity() / SWAP_PAGE_SIZE) * 2;
+            let is_swapped = progress >= pages;
+            debug!("progress={}/{}, swapped={}", progress, pages, is_swapped);
 
             if !is_swapped {
                 led_pwm::set_raw(true);
@@ -194,9 +199,37 @@ pub fn run() -> ! {
             }
         }
 
+        // ── DFU slot diagnostics ──
+        // Which physical slot holds what right before the boot decision.
+        // After a real forward swap, dfu page 1 must contain the OLD firmware's
+        // vector table; raw image or garbage there means the backup phase never
+        // physically ran. The post-boot active dump shows what got restored.
+        #[cfg(feature = "defmt")]
+        {
+            dump_words("pre state", &mut config.state, 0);
+            dump_words("pre active", &mut config.active, 0);
+            dump_words("pre dfu", &mut config.dfu, 0);
+            #[cfg(feature = "dfu_ext")]
+            dump_words("pre dfu+64K", &mut config.dfu, SWAP_PAGE_SIZE as u32);
+        }
+
         let mut page = [0u8; PAGE_SIZE];
         let mut bl = BootLoader::new(config);
         let state = bl.prepare_boot(&mut page).unwrap_or(State::Boot);
+
+        #[cfg(feature = "defmt")]
+        {
+            debug!(
+                "prepare_boot => {}",
+                match state {
+                    State::Boot => "Boot",
+                    State::Swap => "Swap",
+                    State::Revert => "Revert",
+                    State::DfuDetach => "DfuDetach",
+                }
+            );
+            flash_mutex.lock(|c| dump_words("post active", &mut *c.borrow_mut(), active_offset as u32));
+        }
 
         led_pwm::stop();
 
@@ -220,4 +253,18 @@ pub fn run() -> ! {
             cortex_m::asm::bootload(vector_table)
         }
     }
+}
+
+/// DFU slot diagnostics: log the 16 bytes at `off` as hex words.
+#[cfg(feature = "defmt")]
+fn dump_words<F: embedded_storage::nor_flash::ReadNorFlash>(label: &str, flash: &mut F, off: u32) {
+    let mut b = [0u8; 16];
+    let _ = flash.read(off, &mut b);
+    let w: [u32; 4] = core::array::from_fn(|i| {
+        u32::from_le_bytes(b[i * 4..i * 4 + 4].try_into().unwrap())
+    });
+    debug!(
+        "  {} @0x{:06x}: {:08x} {:08x} {:08x} {:08x}",
+        label, off, w[0], w[1], w[2], w[3]
+    );
 }

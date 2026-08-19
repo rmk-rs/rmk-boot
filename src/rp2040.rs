@@ -76,9 +76,22 @@ let mut spi_cfg = SpiConfig::default();
     };
     #[cfg(feature = "dfu_ext")]
     let active_offset = config.active.offset();
+    #[cfg(feature = "dfu_ext")]
+    info!(
+        "dfu_ext: active=0x{:08x}, external flags=0x{:x}",
+        active_offset,
+        EXT_FLASH_SIZE
+    );
+
+    info!(
+        "rp2040: active=0x{:08x}, state=0x{:08x}",
+        active_offset,
+        embassy_rp::flash::FLASH_BASE as u32 + config.state.offset(),
+    );
 
     #[cfg(feature = "noswap")]
     {
+        info!("noswap: booting ACTIVE directly");
         block_for(Duration::from_millis(HB_HALF_MS));
         for _ in 0..HB_CYCLES {
             led_pwm::set_raw(true);
@@ -112,6 +125,7 @@ let mut spi_cfg = SpiConfig::default();
         let current_state = State::from(&state_word[..]);
 
         if current_state == State::Swap {
+            info!("swap in progress");
             let progress = current_progress(&mut config.state);
             let is_swapped = progress >= (config.active.capacity() / SWAP_PAGE_SIZE) * 2;
 

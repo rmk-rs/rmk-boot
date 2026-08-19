@@ -13,6 +13,10 @@ fn main() {
     let is_dfu_ext = env::var("CARGO_FEATURE_DFU_EXT").is_ok();
     let is_defmt = env::var("CARGO_FEATURE_DEFMT").is_ok();
 
+    if is_defmt {
+        println!("cargo:rustc-link-arg-bins=-Tdefmt.x");
+    }
+
     if is_nrf52840 && is_nrf52833 {
         panic!("nrf52840 and nrf52833 are mutually exclusive");
     }
