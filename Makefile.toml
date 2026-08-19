@@ -89,7 +89,10 @@ command = "cargo"
 args = ["hex-to-uf2", "--input-path", "rmk-boot-nrf52840.hex", "--output-path", "rmk-boot-nrf52840.uf2", "--family", "nrf52840"]
 
 [tasks.uf2-all]
-dependencies = ["uf2-rp2040-2mb", "uf2-rp2040-4mb", "uf2-rp2040-8mb", "uf2-rp2040-16mb", "uf2-nrf52840", "uf2-nrf52833", "uf2-rp2040-2mb-noswap", "uf2-rp2040-4mb-noswap", "uf2-rp2040-8mb-noswap", "uf2-rp2040-16mb-noswap", "uf2-nrf52840-noswap", "uf2-nrf52833-noswap"]
+dependencies = ["uf2-rp2040-2mb", "uf2-rp2040-4mb", "uf2-rp2040-8mb", "uf2-rp2040-16mb", "uf2-nrf52840", "uf2-nrf52833", "uf2-rp2040-2mb-noswap", "uf2-rp2040-4mb-noswap", "uf2-rp2040-8mb-noswap", "uf2-rp2040-16mb-noswap", "uf2-nrf52840-noswap", "uf2-nrf52833-noswap", "uf2-dfu_ext"]
+
+[tasks.uf2-release]
+dependencies = ["uf2-rp2040-2mb", "uf2-rp2040-4mb", "uf2-rp2040-8mb", "uf2-rp2040-16mb", "uf2-nrf52840", "uf2-nrf52833", "uf2-nrf52840-noswap", "uf2-nrf52833-noswap", "uf2-dfu_ext"]
 
 # ── noswap variants ──
 
@@ -177,3 +180,91 @@ dependencies = ["objcopy-nrf52833-noswap"]
 command = "cargo"
 args = ["hex-to-uf2", "--input-path", "rmk-boot-nrf52833-noswap.hex", "--output-path", "rmk-boot-nrf52833-noswap.uf2", "--family", "nrf52833"]
 
+# ── dfu_ext variants ──
+
+[tasks.build-rp2040-2mb-dfu_ext]
+command = "cargo"
+args = ["build", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-2mb,dfu_ext"]
+
+[tasks.objcopy-rp2040-2mb-dfu_ext]
+dependencies = ["install-llvm-tools", "build-rp2040-2mb-dfu_ext"]
+command = "cargo"
+args = ["objcopy", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-2mb,dfu_ext", "--", "-O", "ihex", "rmk-boot-rp2040-2mb-dfu_ext.hex"]
+
+[tasks.uf2-rp2040-2mb-dfu_ext]
+dependencies = ["objcopy-rp2040-2mb-dfu_ext"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-2mb-dfu_ext.hex", "--output-path", "rmk-boot-rp2040-2mb-dfu_ext.uf2", "--family", "rp2040"]
+
+[tasks.build-rp2040-4mb-dfu_ext]
+command = "cargo"
+args = ["build", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-4mb,dfu_ext"]
+
+[tasks.objcopy-rp2040-4mb-dfu_ext]
+dependencies = ["install-llvm-tools", "build-rp2040-4mb-dfu_ext"]
+command = "cargo"
+args = ["objcopy", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-4mb,dfu_ext", "--", "-O", "ihex", "rmk-boot-rp2040-4mb-dfu_ext.hex"]
+
+[tasks.uf2-rp2040-4mb-dfu_ext]
+dependencies = ["objcopy-rp2040-4mb-dfu_ext"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-4mb-dfu_ext.hex", "--output-path", "rmk-boot-rp2040-4mb-dfu_ext.uf2", "--family", "rp2040"]
+
+[tasks.build-rp2040-8mb-dfu_ext]
+command = "cargo"
+args = ["build", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-8mb,dfu_ext"]
+
+[tasks.objcopy-rp2040-8mb-dfu_ext]
+dependencies = ["install-llvm-tools", "build-rp2040-8mb-dfu_ext"]
+command = "cargo"
+args = ["objcopy", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-8mb,dfu_ext", "--", "-O", "ihex", "rmk-boot-rp2040-8mb-dfu_ext.hex"]
+
+[tasks.uf2-rp2040-8mb-dfu_ext]
+dependencies = ["objcopy-rp2040-8mb-dfu_ext"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-8mb-dfu_ext.hex", "--output-path", "rmk-boot-rp2040-8mb-dfu_ext.uf2", "--family", "rp2040"]
+
+[tasks.build-rp2040-16mb-dfu_ext]
+command = "cargo"
+args = ["build", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-16mb,dfu_ext"]
+
+[tasks.objcopy-rp2040-16mb-dfu_ext]
+dependencies = ["install-llvm-tools", "build-rp2040-16mb-dfu_ext"]
+command = "cargo"
+args = ["objcopy", "--release", "--target", "thumbv6m-none-eabi", "--features", "rp2040-16mb,dfu_ext", "--", "-O", "ihex", "rmk-boot-rp2040-16mb-dfu_ext.hex"]
+
+[tasks.uf2-rp2040-16mb-dfu_ext]
+dependencies = ["objcopy-rp2040-16mb-dfu_ext"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-rp2040-16mb-dfu_ext.hex", "--output-path", "rmk-boot-rp2040-16mb-dfu_ext.uf2", "--family", "rp2040"]
+
+[tasks.build-nrf52840-dfu_ext]
+command = "cargo"
+args = ["build", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52840,dfu_ext"]
+
+[tasks.objcopy-nrf52840-dfu_ext]
+dependencies = ["install-llvm-tools", "build-nrf52840-dfu_ext"]
+command = "cargo"
+args = ["objcopy", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52840,dfu_ext", "--", "-O", "ihex", "rmk-boot-nrf52840-dfu_ext.hex"]
+
+[tasks.uf2-nrf52840-dfu_ext]
+dependencies = ["objcopy-nrf52840-dfu_ext"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-nrf52840-dfu_ext.hex", "--output-path", "rmk-boot-nrf52840-dfu_ext.uf2", "--family", "nrf52840"]
+
+[tasks.build-nrf52833-dfu_ext]
+command = "cargo"
+args = ["build", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52833,dfu_ext"]
+
+[tasks.objcopy-nrf52833-dfu_ext]
+dependencies = ["install-llvm-tools", "build-nrf52833-dfu_ext"]
+command = "cargo"
+args = ["objcopy", "--release", "--target", "thumbv7em-none-eabihf", "--features", "nrf52833,dfu_ext", "--", "-O", "ihex", "rmk-boot-nrf52833-dfu_ext.hex"]
+
+[tasks.uf2-nrf52833-dfu_ext]
+dependencies = ["objcopy-nrf52833-dfu_ext"]
+command = "cargo"
+args = ["hex-to-uf2", "--input-path", "rmk-boot-nrf52833-dfu_ext.hex", "--output-path", "rmk-boot-nrf52833-dfu_ext.uf2", "--family", "nrf52833"]
+
+[tasks.uf2-dfu_ext]
+dependencies = ["uf2-rp2040-2mb-dfu_ext", "uf2-rp2040-4mb-dfu_ext", "uf2-rp2040-8mb-dfu_ext", "uf2-rp2040-16mb-dfu_ext", "uf2-nrf52840-dfu_ext", "uf2-nrf52833-dfu_ext"]

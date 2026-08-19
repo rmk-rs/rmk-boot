@@ -10,6 +10,8 @@ fn main() {
     let is_nrf52840 = env::var("CARGO_FEATURE_NRF52840").is_ok();
     let is_nrf52833 = env::var("CARGO_FEATURE_NRF52833").is_ok();
     let is_noswap = env::var("CARGO_FEATURE_NOSWAP").is_ok();
+    let is_dfu_ext = env::var("CARGO_FEATURE_DFU_EXT").is_ok();
+    let is_defmt = env::var("CARGO_FEATURE_DEFMT").is_ok();
 
     if is_nrf52840 && is_nrf52833 {
         panic!("nrf52840 and nrf52833 are mutually exclusive");
@@ -33,12 +35,19 @@ fn main() {
             };
         let variant_slug = if is_noswap {
             format!("{variant_slug}-noswap")
+        } else if is_dfu_ext {
+            format!("{variant_slug}-dfu_ext")
         } else {
             variant_slug.to_string()
         };
 
         let remaining = flash_size - 28 * 1024 - STORAGE_SIZE;
-        let (active_size, dfu_size) = if is_noswap {
+        const SWAP_PAGE_SIZE: usize = 64 * 1024;
+        let (active_size, dfu_size) = if is_dfu_ext {
+            // ACTIVE capacity must be a multiple of the swap page size
+            // (embassy computes PAGE_SIZE = max(ERASE_SIZE) of both flashes)
+            ((remaining / SWAP_PAGE_SIZE) * SWAP_PAGE_SIZE, 0)
+        } else if is_noswap {
             (remaining, 0)
         } else {
             ((remaining - PAGE_SIZE) / 2, (remaining - PAGE_SIZE) / 2 + PAGE_SIZE)
@@ -88,6 +97,7 @@ __bootloader_dfu_end      = ORIGIN(DFU) + LENGTH(DFU) - ORIGIN(BOOT2);
         println!("cargo:rerun-if-env-changed=CARGO_FEATURE_RP2040_8MB");
         println!("cargo:rerun-if-env-changed=CARGO_FEATURE_RP2040_16MB");
         println!("cargo:rerun-if-env-changed=CARGO_FEATURE_NOSWAP");
+        println!("cargo:rerun-if-env-changed=CARGO_FEATURE_DFU_EXT");
 
         let rmk_boot_x = build_rmk_boot_x(
             variant_label,
@@ -95,8 +105,8 @@ __bootloader_dfu_end      = ORIGIN(DFU) + LENGTH(DFU) - ORIGIN(BOOT2);
             active_size as u32,
             rel_state_offset,
             0x1000,
-            if is_noswap { 0 } else { rel_dfu_offset },
-            if is_noswap { 0 } else { rel_dfu_size },
+            if is_noswap || is_dfu_ext { 0 } else { rel_dfu_offset },
+            if is_noswap || is_dfu_ext { 0 } else { rel_dfu_size },
             rel_storage_offset,
             STORAGE_SIZE as u32,
             0x1000_0000, // XIP flash base
@@ -110,10 +120,16 @@ __bootloader_dfu_end      = ORIGIN(DFU) + LENGTH(DFU) - ORIGIN(BOOT2);
         } else {
             ("nRF52833", "nrf52833", 512 * 1024, 128 * 1024)
         };
-        let bootloader_size = 24 * 1024;
+        // 24K bootloader — same as the RP2040 layout. Defmt debug builds need
+        // 32K (~29K binary); pair the app with the generated rmk-memory.x when
+        // flashing a defmt bootloader.
+        let bootloader_size = if is_defmt { 32 * 1024 } else { 24 * 1024 };
         let state_size = 4 * 1024;
         let remaining = flash_size - bootloader_size - state_size - STORAGE_SIZE;
-        let (active_size, dfu_size) = if is_noswap {
+        const SWAP_PAGE_SIZE: usize = 64 * 1024;
+        let (active_size, dfu_size) = if is_dfu_ext {
+            ((remaining / SWAP_PAGE_SIZE) * SWAP_PAGE_SIZE, 0)
+        } else if is_noswap {
             (remaining, 0)
         } else {
             ((remaining - PAGE_SIZE) / 2, (remaining - PAGE_SIZE) / 2 + PAGE_SIZE)
@@ -123,7 +139,7 @@ __bootloader_dfu_end      = ORIGIN(DFU) + LENGTH(DFU) - ORIGIN(BOOT2);
         let abs_active_offset = (bootloader_size + state_size) as u32;
         let abs_dfu_offset = abs_active_offset + active_size as u32;
 
-        let (dfu_start_sym, dfu_end_sym) = if is_noswap {
+        let (dfu_start_sym, dfu_end_sym) = if is_noswap || is_dfu_ext {
             (
                 format!("__bootloader_dfu_start     = ORIGIN(ACTIVE);"),
                 format!("__bootloader_dfu_end       = ORIGIN(ACTIVE) + LENGTH(ACTIVE);"),
@@ -162,6 +178,7 @@ __bootloader_active_end    = ORIGIN(ACTIVE) + LENGTH(ACTIVE);
         println!("cargo:rustc-link-search={}", out.display());
         println!("cargo:rustc-link-arg-bins=-Tlink.x");
         println!("cargo:rerun-if-env-changed=CARGO_FEATURE_NOSWAP");
+        println!("cargo:rerun-if-env-changed=CARGO_FEATURE_DFU_EXT");
 
         let rmk_boot_x = build_rmk_boot_x(
             variant_label,
@@ -169,15 +186,15 @@ __bootloader_active_end    = ORIGIN(ACTIVE) + LENGTH(ACTIVE);
             active_size as u32,
             abs_state_offset,
             state_size as u32,
-            if is_noswap { 0 } else { abs_dfu_offset },
-            if is_noswap { 0 } else { dfu_size as u32 },
+            if is_noswap || is_dfu_ext { 0 } else { abs_dfu_offset },
+            if is_noswap || is_dfu_ext { 0 } else { dfu_size as u32 },
             abs_dfu_offset + dfu_size as u32,
             STORAGE_SIZE as u32,
             0x0000_0000, // flash base
             ram_size as u32,
         );
         let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        write_rmk_boot_x(&project_root, &variant_slug, &rmk_boot_x);
+        write_rmk_boot_x(&project_root, &nrf_variant_slug(variant_slug, is_noswap, is_dfu_ext), &rmk_boot_x);
     } else {
         panic!("No platform feature enabled (rp2040 or nrf52840 or nrf52833)");
     }
@@ -186,7 +203,8 @@ __bootloader_active_end    = ORIGIN(ACTIVE) + LENGTH(ACTIVE);
 }
 
 /// Write the RMK linker script to the project root both under the generic
-/// name `rmk-memory.x` and under the variant-specific release name.
+/// name `rmk-memory.x` and under the variant-specific `rmk-boot-{variant}-memory.x`
+/// release name.
 fn write_rmk_boot_x(project_root: &Path, variant_slug: &str, content: &str) {
     fs::write(project_root.join("rmk-memory.x"), content).unwrap();
     fs::write(
@@ -194,6 +212,18 @@ fn write_rmk_boot_x(project_root: &Path, variant_slug: &str, content: &str) {
         content,
     )
     .unwrap();
+}
+
+/// Variant slug for the nRF platform, appending the layout-modifying
+/// `noswap`/`dfu_ext` feature when enabled.
+fn nrf_variant_slug(platform: &str, is_noswap: bool, is_dfu_ext: bool) -> String {
+    if is_noswap {
+        format!("{platform}-noswap")
+    } else if is_dfu_ext {
+        format!("{platform}-dfu_ext")
+    } else {
+        platform.to_string()
+    }
 }
 
 fn build_rmk_boot_x(

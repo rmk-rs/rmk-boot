@@ -8,7 +8,9 @@ edition = "2024"
 embassy-embedded-hal = "0.6"
 embassy-sync = "0.8"
 embassy-time = "0.5.1"
+static_cell = "2.1.1"
 embedded-storage = "0.3"
+embedded-hal = "1"
 cortex-m = "0.7.6"
 cortex-m-rt = "0.7.5"
 
@@ -42,6 +44,7 @@ nrf528xx = ["embassy-nrf", "cortex-m/critical-section-single-core", "embassy-usb
 nrf52840 = ["nrf528xx", "embassy-nrf/nrf52840"]
 nrf52833 = ["nrf528xx", "embassy-nrf/nrf52833"]
 noswap = []
+dfu_ext = []
 
 [profile.release]
 opt-level = "z"

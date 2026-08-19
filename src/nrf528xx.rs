@@ -1,8 +1,27 @@
 use embassy_boot::BootLoaderConfig;
 use embassy_nrf::nvmc::Nvmc;
 use embassy_nrf::pwm::{Prescaler, SimpleConfig, SimplePwm};
+#[cfg(feature = "dfu_ext")]
+use embassy_nrf::spim::Spim;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use static_cell::StaticCell;
 
 use super::*;
+
+type FlashMutex = Mutex<NoopRawMutex, RefCell<Nvmc<'static>>>;
+static FLASH_MUTEX: StaticCell<FlashMutex> = StaticCell::new();
+
+#[cfg(feature = "dfu_ext")]
+type ExtFlashMutex = Mutex<NoopRawMutex, RefCell<crate::dfu::ExtFlash>>;
+#[cfg(feature = "dfu_ext")]
+static EXT_MUTEX: StaticCell<ExtFlashMutex> = StaticCell::new();
+
+#[cfg(feature = "dfu_ext")]
+embassy_nrf::bind_interrupts! {
+    pub(crate) struct ExtFlashIrqs {
+        TWISPI0 => embassy_nrf::spim::InterruptHandler<embassy_nrf::peripherals::TWISPI0>;
+    }
+}
 
 pub fn run() -> ! {
     let mut cfg = embassy_nrf::config::Config::default();
@@ -27,8 +46,8 @@ pub fn run() -> ! {
     pwm.enable();
     led_pwm::init(pwm);
 
-    let flash = Nvmc::new(p.NVMC);
-    let flash_mutex = Mutex::new(RefCell::new(flash));
+    let flash_mutex: &'static _ =
+        FLASH_MUTEX.init(Mutex::new(RefCell::new(Nvmc::new(p.NVMC))));
 
     // ── Phase 1: Double-tap (similar to Adafruit BL, RAM 0x20007F7C) ──
     //
@@ -43,8 +62,28 @@ pub fn run() -> ! {
 
     if reset_pin && magic == DBL_MAGIC {
         unsafe { core::ptr::write_volatile(DBL_MEM, 0) };
-        let fm: &'static _ = unsafe { &*(&flash_mutex as *const _) };
-        crate::dfu::run_dfu_usb(fm);
+
+        #[cfg(feature = "dfu_ext")]
+        {
+            use embassy_nrf::gpio::{Level, Output};
+
+            let mut spi_cfg = embassy_nrf::spim::Config::default();
+            spi_cfg.frequency = embassy_nrf::spim::Frequency::M32;
+
+            let spi = Spim::new(p.TWISPI0, ExtFlashIrqs, p.P0_17, p.P0_20, p.P0_22, spi_cfg);
+            let cs = Output::new(p.P0_24, Level::High, embassy_nrf::gpio::OutputDrive::Standard);
+
+            let ext_flash = crate::driver::w25q::W25qNorFlash::<_, _, { 64 * 1024 }>::new(
+                spi, cs, EXT_FLASH_SIZE,
+            );
+            let ext_mutex: &'static _ = EXT_MUTEX.init(Mutex::new(RefCell::new(ext_flash)));
+            crate::dfu::run_dfu_usb_ext(flash_mutex, ext_mutex, EXT_FLASH_SIZE);
+        }
+
+        #[cfg(not(feature = "dfu_ext"))]
+        {
+            crate::dfu::run_dfu_usb(flash_mutex);
+        }
     } else if reset_pin {
         unsafe { core::ptr::write_volatile(DBL_MEM, DBL_MAGIC) };
         led_pwm::set_raw(false);
@@ -55,10 +94,42 @@ pub fn run() -> ! {
     }
 
     // Phase 2 — normal boot flow
+    #[cfg(not(feature = "dfu_ext"))]
+    let (active_offset, mut config) = {
+        let config =
+            BootLoaderConfig::from_linkerfile_blocking(flash_mutex, flash_mutex, flash_mutex);
+        (config.active.offset(), config)
+    };
+
+    #[cfg(feature = "dfu_ext")]
     #[cfg_attr(feature = "noswap", allow(unused_variables, unused_mut))]
-    let mut config =
-        BootLoaderConfig::from_linkerfile_blocking(&flash_mutex, &flash_mutex, &flash_mutex);
-    let active_offset = config.active.offset();
+    let (active_offset, mut config) = {
+        use embassy_nrf::gpio::{Level, Output};
+
+        let mut spi_cfg = embassy_nrf::spim::Config::default();
+        spi_cfg.frequency = embassy_nrf::spim::Frequency::M32;
+
+        // Default SPI pins — change if your board is wired differently
+        let spi = Spim::new(p.TWISPI0, ExtFlashIrqs, p.P0_17, p.P0_20, p.P0_22, spi_cfg);
+        let cs = Output::new(p.P0_24, Level::High, embassy_nrf::gpio::OutputDrive::Standard);
+
+        let ext_flash = crate::driver::w25q::W25qNorFlash::<_, _, { 64 * 1024 }>::new(
+            spi, cs, EXT_FLASH_SIZE,
+        );
+        let ext_mutex: &'static _ = EXT_MUTEX.init(Mutex::new(RefCell::new(ext_flash)));
+
+        let internal_cfg =
+            BootLoaderConfig::from_linkerfile_blocking(flash_mutex, flash_mutex, flash_mutex);
+        let active_offset = internal_cfg.active.offset();
+
+        let config = BootLoaderConfig {
+            active: internal_cfg.active,
+            dfu: BlockingPartition::new(ext_mutex, 0, EXT_FLASH_SIZE),
+            state: internal_cfg.state,
+        };
+        (active_offset, config)
+    };
+
 
     #[cfg(feature = "noswap")]
     {
@@ -90,9 +161,8 @@ pub fn run() -> ! {
         let current_state = State::from(&state_word[..]);
 
         if current_state == State::Swap {
-            let page_count = config.active.capacity() / PAGE_SIZE;
             let progress = current_progress(&mut config.state);
-            let is_swapped = progress >= page_count * 2;
+            let is_swapped = progress >= (config.active.capacity() / SWAP_PAGE_SIZE) * 2;
 
             if !is_swapped {
                 led_pwm::set_raw(true);
@@ -117,9 +187,8 @@ pub fn run() -> ! {
         }
 
         if current_state == State::Swap {
-            let page_count = config.active.capacity() / PAGE_SIZE;
             let progress = current_progress(&mut config.state);
-            let is_swapped = progress >= page_count * 2;
+            let is_swapped = progress >= (config.active.capacity() / SWAP_PAGE_SIZE) * 2;
             if !is_swapped {
                 led_pwm::start(SWAP_BREATHE_MS);
             }
