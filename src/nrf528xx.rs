@@ -48,11 +48,26 @@ pub fn run() -> ! {
 
     let flash_mutex: &'static _ = FLASH_MUTEX.init(Mutex::new(RefCell::new(Nvmc::new(p.NVMC))));
 
+    // ── GPREGRET request (Adafruit BL's DFU_MAGIC_UF2_RESET) ──
+    //
+    // An application can request DFU entry by writing 0x57 to GPREGRET
+    // before a soft reset (RMK does this via its `adafruit_bl` feature).
+    // The value must be cleared again, otherwise every following boot
+    // would re-enter DFU mode.
+    use embassy_nrf::pac::POWER;
+
+    if POWER.gpregret().read().gpregret() == 0x57 {
+        info!("gpregret magic detected: entering USB DFU mode");
+        POWER
+            .gpregret()
+            .write_value(embassy_nrf::pac::power::regs::Gpregret(0));
+        enter_dfu(flash_mutex);
+    }
+
     // ── Phase 1: Double-tap (similar to Adafruit BL, RAM 0x20007F7C) ──
     //
     // Two consecutive NRST resets within ~500ms enter DFU mode instead of
     // normal boot.
-    use embassy_nrf::pac::POWER;
     const DBL_MEM: *mut u32 = 0x20007F7C as *mut u32;
     const DBL_MAGIC: u32 = 0x005A1AD5;
 
@@ -62,34 +77,7 @@ pub fn run() -> ! {
     if reset_pin && magic == DBL_MAGIC {
         info!("double tap detected: entering USB DFU mode");
         unsafe { core::ptr::write_volatile(DBL_MEM, 0) };
-
-        #[cfg(feature = "dfu_ext")]
-        {
-            use embassy_nrf::gpio::{Level, Output};
-
-            let mut spi_cfg = embassy_nrf::spim::Config::default();
-            spi_cfg.frequency = embassy_nrf::spim::Frequency::M32;
-
-            let spi = Spim::new(p.TWISPI0, ExtFlashIrqs, p.P0_17, p.P0_20, p.P0_22, spi_cfg);
-            let cs = Output::new(
-                p.P0_24,
-                Level::High,
-                embassy_nrf::gpio::OutputDrive::Standard,
-            );
-
-            let ext_flash = crate::driver::w25q::W25qNorFlash::<_, _, { 64 * 1024 }>::new(
-                spi,
-                cs,
-                EXT_FLASH_SIZE,
-            );
-            let ext_mutex: &'static _ = EXT_MUTEX.init(Mutex::new(RefCell::new(ext_flash)));
-            crate::dfu::run_dfu_usb_ext(flash_mutex, ext_mutex, EXT_FLASH_SIZE);
-        }
-
-        #[cfg(not(feature = "dfu_ext"))]
-        {
-            crate::dfu::run_dfu_usb(flash_mutex);
-        }
+        enter_dfu(flash_mutex);
     } else if reset_pin {
         unsafe { core::ptr::write_volatile(DBL_MEM, DBL_MAGIC) };
         led_pwm::set_raw(false);
@@ -106,24 +94,7 @@ pub fn run() -> ! {
     let active_offset = config.active.offset();
 
     #[cfg(feature = "dfu_ext")]
-    let ext_mutex: &'static ExtFlashMutex = {
-        use embassy_nrf::gpio::{Level, Output};
-
-        let mut spi_cfg = embassy_nrf::spim::Config::default();
-        spi_cfg.frequency = embassy_nrf::spim::Frequency::M32;
-
-        // Default SPI pins — change if your board is wired differently
-        let spi = Spim::new(p.TWISPI0, ExtFlashIrqs, p.P0_17, p.P0_20, p.P0_22, spi_cfg);
-        let cs = Output::new(
-            p.P0_24,
-            Level::High,
-            embassy_nrf::gpio::OutputDrive::Standard,
-        );
-
-        let ext_flash =
-            crate::driver::w25q::W25qNorFlash::<_, _, { 64 * 1024 }>::new(spi, cs, EXT_FLASH_SIZE);
-        EXT_MUTEX.init(Mutex::new(RefCell::new(ext_flash)))
-    };
+    let ext_mutex: &'static ExtFlashMutex = init_ext_flash();
 
     #[cfg(feature = "dfu_ext")]
     let config = {
@@ -269,6 +240,48 @@ pub fn run() -> ! {
             cortex_m::asm::bootload(vector_table)
         }
     }
+}
+
+/// Enter the USB DFU stack – never returns.
+///
+/// Shared entry path for the GPREGRET request and the double-tap reset.
+fn enter_dfu(flash_mutex: &'static Mutex<NoopRawMutex, RefCell<Nvmc<'static>>>) -> ! {
+    #[cfg(feature = "dfu_ext")]
+    {
+        let ext_mutex = init_ext_flash();
+        crate::dfu::run_dfu_usb_ext(flash_mutex, ext_mutex, EXT_FLASH_SIZE);
+    }
+
+    #[cfg(not(feature = "dfu_ext"))]
+    {
+        crate::dfu::run_dfu_usb(flash_mutex);
+    }
+}
+
+/// Initialize the external SPI NOR flash used as DFU slot.
+#[cfg(feature = "dfu_ext")]
+fn init_ext_flash() -> &'static ExtFlashMutex {
+    use embassy_nrf::gpio::{Level, Output};
+
+    let p = unsafe { embassy_nrf::Peripherals::steal() };
+
+    let mut spi_cfg = embassy_nrf::spim::Config::default();
+    spi_cfg.frequency = embassy_nrf::spim::Frequency::M32;
+
+    // Default SPI pins — change here if your board is wired differently
+    let spi = Spim::new(p.TWISPI0, ExtFlashIrqs, p.P0_17, p.P0_20, p.P0_22, spi_cfg);
+    let cs = Output::new(
+        p.P0_24,
+        Level::High,
+        embassy_nrf::gpio::OutputDrive::Standard,
+    );
+
+    let ext_flash = crate::driver::w25q::W25qNorFlash::<
+        _,
+        _,
+        { crate::driver::w25q::SWAP_PAGE_SIZE },
+    >::new(spi, cs, EXT_FLASH_SIZE);
+    EXT_MUTEX.init(Mutex::new(RefCell::new(ext_flash)))
 }
 
 /// DFU slot diagnostics: log the 16 bytes at `off` as hex words.
