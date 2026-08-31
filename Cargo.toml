@@ -1,13 +1,16 @@
 [package]
 name = "rmk-boot"
-version = "0.1.0"
+version = "0.9.1"
 edition = "2024"
 
 [dependencies]
 # Shared
-embassy-embedded-hal = "0.6"
-embassy-sync = "0.8"
-embassy-time = "0.5.1"
+embassy-embedded-hal = { version = "0.6", default-features = false }
+embassy-sync = { version = "0.8", default-features = false }
+embassy-time = { version = "0.5", default-features = false }
+static_cell = "2.1.1"
+portable-atomic = { version = "1.5.1", features = ["critical-section"] }
+embedded-hal = "1"
 embedded-storage = "0.3"
 cortex-m = "0.7.6"
 cortex-m-rt = "0.7.5"
@@ -25,26 +28,45 @@ embassy-usb-dfu = { version = "0.3", default-features = false, features = [
     "cortex-m",
 ], optional = true }
 
-# nRF52840
+# nRF52
 embassy-nrf = { version = "0.10", features = [
-    "nrf52840",
     "time-driver-rtc1",
     "unstable-pac",
 ], optional = true }
 embassy-boot = "0.7"
 
+# Logging (optional, opt-in via feature)
+defmt = { version = "1", default-features = false, optional = true }
+defmt-rtt = { version = "1", optional = true }
+
 [features]
+defmt = [
+    "dep:defmt",
+    "dep:defmt-rtt",
+    "embassy-embedded-hal/defmt",
+    "embassy-sync/defmt",
+    "embassy-time/defmt",
+    "embassy-rp?/defmt",
+    "embassy-boot-rp?/defmt",
+    "embassy-usb?/defmt",
+    "embassy-usb-dfu?/defmt",
+    "embassy-nrf?/defmt",
+    "embassy-boot/defmt",
+]
 rp2040 = ["embassy-rp", "embassy-boot-rp", "embassy-usb", "embassy-usb-dfu"]
 rp2040-2mb = ["rp2040"]
 rp2040-4mb = ["rp2040"]
 rp2040-8mb = ["rp2040"]
 rp2040-16mb = ["rp2040"]
-nrf52840 = ["embassy-nrf", "cortex-m/critical-section-single-core", "embassy-usb", "embassy-usb-dfu"]
+nrf528xx = ["embassy-nrf", "cortex-m/critical-section-single-core", "embassy-usb", "embassy-usb-dfu"]
+nrf52840 = ["nrf528xx", "embassy-nrf/nrf52840"]
+nrf52833 = ["nrf528xx", "embassy-nrf/nrf52833"]
+noswap = []
+dfu_ext = []
 
 [profile.release]
-opt-level = "z"
-lto = true
 codegen-units = 1
+lto = "fat"
+opt-level = "z"
 debug = false
 panic = "abort"
-overflow-checks = false
