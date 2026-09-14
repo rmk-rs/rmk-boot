@@ -53,33 +53,41 @@ mod led_pwm;
 use core::cell::RefCell;
 
 use cortex_m_rt::entry;
+#[cfg(not(feature = "noswap"))]
 use embassy_embedded_hal::flash::partition::BlockingPartition;
 use embassy_sync::blocking_mutex::Mutex;
+#[cfg(not(feature = "noswap"))]
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_time::{block_for, Duration};
+#[cfg(not(feature = "noswap"))]
 use embedded_storage::nor_flash::{NorFlash, ReadNorFlash};
 
 // ---------------------------------------------------------------------------
 // Shared constants (cfg for platform-specific values)
 // ---------------------------------------------------------------------------
-#[cfg(feature = "rp2040")]
+#[cfg(all(feature = "rp2040", not(feature = "noswap")))]
 const PAGE_SIZE: usize = 4096;
-#[cfg(feature = "rp2040")]
+#[cfg(all(feature = "rp2040", not(feature = "noswap")))]
 const WRITE_SIZE: usize = 1;
 
-#[cfg(feature = "nrf528xx")]
+#[cfg(all(feature = "nrf528xx", not(feature = "noswap")))]
 const PAGE_SIZE: usize = 4096;
-#[cfg(feature = "nrf528xx")]
+#[cfg(all(feature = "nrf528xx", not(feature = "noswap")))]
 const WRITE_SIZE: usize = 4;
 
+#[cfg(not(feature = "noswap"))]
 const STATE_ERASE_VALUE: u8 = 0xFF;
 
 const HB_HALF_MS: u64 = 250;
 const HB_CYCLES: u32 = 2;
 
+#[cfg(not(feature = "noswap"))]
 const PRE_SWAP_MS: u64 = 1000;
+#[cfg(not(feature = "noswap"))]
 const PRE_REVERT_BLINK_MS: u64 = 100;
+#[cfg(not(feature = "noswap"))]
 const PRE_REVERT_COUNT: u32 = 3;
+#[cfg(not(feature = "noswap"))]
 const POST_SWAP_COUNT: u32 = 5;
 
 const DOT_MS: u64 = 150;
@@ -88,6 +96,7 @@ const INTRA_GAP_MS: u64 = 150;
 const LETTER_GAP_MS: u64 = 450;
 const WORD_GAP_MS: u64 = 1050;
 
+#[cfg(not(feature = "noswap"))]
 const SWAP_BREATHE_MS: u32 = 300;
 #[cfg(feature = "nrf528xx")]
 const DFU_BREATHE_MS: u32 = 3000;
@@ -123,6 +132,7 @@ fn SysTick() {
 // ---------------------------------------------------------------------------
 // Shared helper: progress reader
 // ---------------------------------------------------------------------------
+#[cfg(not(feature = "noswap"))]
 fn current_progress<STATE: NorFlash + ReadNorFlash>(
     state: &mut BlockingPartition<'_, NoopRawMutex, STATE>,
 ) -> usize {
