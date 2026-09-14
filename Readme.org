@@ -118,6 +118,12 @@ The bootloader implements the *double-tap* convention known from the Adafruit
 bootloader for the nRF52. Double tap NRST (reset pin) to GND to enter DFU mode,
 the LED (P0_15 by default) starts breathing slowly to show that DFU mode is active.
 
+Additionally, the application can request DFU entry in software by writing
+~0x57~ (the Adafruit bootloader's ~DFU_MAGIC_UF2_RESET~) to ~GPREGRET~ before
+issuing a soft reset. RMK does this when built with the ~adafruit_bl~
+feature, so the ~Bootloader~ keycode enters DFU mode just like with the
+Adafruit bootloader. The value is cleared by rmk-boot on boot.
+
 With the ~noswap~ feature, DFU mode writes new firmware directly to the ACTIVE
 partition instead of a separate DFU slot.
 With the ~dfu_ext~ feature, DFU mode writes to the external SPI flash instead
