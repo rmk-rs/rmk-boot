@@ -40,7 +40,9 @@ pub fn run() -> ! {
 
     #[cfg(not(feature = "dfu_ext"))]
     let config = embassy_boot_rp::BootLoaderConfig::from_linkerfile_blocking(
-        &flash_mutex, &flash_mutex, &flash_mutex,
+        &flash_mutex,
+        &flash_mutex,
+        &flash_mutex,
     );
     #[cfg(not(feature = "dfu_ext"))]
     let active_offset = config.active.offset();
@@ -52,12 +54,14 @@ pub fn run() -> ! {
 
         // Default SPI pins for external flash — change if your board is wired
         // differently.
-let mut spi_cfg = SpiConfig::default();
+        let mut spi_cfg = SpiConfig::default();
         spi_cfg.frequency = 32_000_000;
         let spi_bus = Spi::new_blocking(p.SPI0, p.PIN_18, p.PIN_19, p.PIN_16, spi_cfg);
         let cs = Output::new(p.PIN_17, Level::High);
         let ext_flash = crate::driver::w25q::W25qNorFlash::<_, _, { 64 * 1024 }>::new(
-            spi_bus, cs, EXT_FLASH_SIZE,
+            spi_bus,
+            cs,
+            EXT_FLASH_SIZE,
         );
         Mutex::new(RefCell::new(ext_flash))
     };
@@ -65,7 +69,9 @@ let mut spi_cfg = SpiConfig::default();
     let config = {
         // Get active + state partitions from linker symbols
         let internal_cfg = embassy_boot_rp::BootLoaderConfig::from_linkerfile_blocking(
-            &flash_mutex, &flash_mutex, &flash_mutex,
+            &flash_mutex,
+            &flash_mutex,
+            &flash_mutex,
         );
 
         embassy_boot::BootLoaderConfig {
@@ -79,8 +85,7 @@ let mut spi_cfg = SpiConfig::default();
     #[cfg(feature = "dfu_ext")]
     info!(
         "dfu_ext: active=0x{:08x}, external flags=0x{:x}",
-        active_offset,
-        EXT_FLASH_SIZE
+        active_offset, EXT_FLASH_SIZE
     );
 
     info!(
@@ -106,18 +111,17 @@ let mut spi_cfg = SpiConfig::default();
         led_pwm::deinit();
 
         unsafe {
-            let vector_table =
-                (embassy_rp::flash::FLASH_BASE as u32 + active_offset) as *const u32;
+            let vector_table = (embassy_rp::flash::FLASH_BASE as u32 + active_offset) as *const u32;
             cortex_m::asm::bootload(vector_table)
         }
     }
 
     #[cfg(not(feature = "noswap"))]
     {
-        #[cfg(not(feature = "dfu_ext"))]
-        use embassy_boot_rp::{BootLoader, State};
         #[cfg(feature = "dfu_ext")]
         use embassy_boot::{BootLoader, State};
+        #[cfg(not(feature = "dfu_ext"))]
+        use embassy_boot_rp::{BootLoader, State};
         let mut config = config;
 
         let mut state_word = [0u8; WRITE_SIZE];
@@ -188,8 +192,7 @@ let mut spi_cfg = SpiConfig::default();
         led_pwm::deinit();
 
         unsafe {
-            let vector_table =
-                (embassy_rp::flash::FLASH_BASE as u32 + active_offset) as *const u32;
+            let vector_table = (embassy_rp::flash::FLASH_BASE as u32 + active_offset) as *const u32;
             cortex_m::asm::bootload(vector_table)
         }
     }

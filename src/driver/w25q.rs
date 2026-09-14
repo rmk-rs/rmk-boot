@@ -1,6 +1,8 @@
 use embedded_hal::digital::OutputPin;
 use embedded_hal::spi::SpiBus;
-use embedded_storage::nor_flash::{ErrorType, MultiwriteNorFlash, NorFlash, NorFlashError, NorFlashErrorKind, ReadNorFlash};
+use embedded_storage::nor_flash::{
+    ErrorType, MultiwriteNorFlash, NorFlash, NorFlashError, NorFlashErrorKind, ReadNorFlash,
+};
 
 const CMD_READ: u8 = 0x03;
 const CMD_PAGE_PROGRAM: u8 = 0x02;
@@ -16,9 +18,8 @@ const BLOCK64_SIZE: u32 = 65536;
 /// Swap-page granularity exposed to the boot flow: the erase unit is the 64K
 /// block, so embassy-boot's swap page size becomes 64K (matching the internal
 /// ACTIVE partition, whose capacity is 64K-aligned in the dfu_ext layout).
+#[cfg(feature = "dfu_ext")]
 pub const SWAP_PAGE_SIZE: usize = BLOCK64_SIZE as usize;
-
-/// [`NorFlash`] implementation for W25Q and compatible 25-series SPI NOR flash
 /// chips. Uses standard JEDEC commands valid across Winbond, Macronix, ISSI,
 /// and similar families.
 ///
@@ -34,7 +35,11 @@ pub struct W25qNorFlash<BUS: SpiBus, CS: OutputPin, const ERASE_UNIT: usize> {
 impl<BUS: SpiBus, CS: OutputPin, const ERASE_UNIT: usize> W25qNorFlash<BUS, CS, ERASE_UNIT> {
     pub fn new(bus: BUS, mut cs: CS, flash_size: u32) -> Self {
         cs.set_high().ok();
-        Self { bus, cs, flash_size }
+        Self {
+            bus,
+            cs,
+            flash_size,
+        }
     }
 
     fn wait_wip(&mut self) -> Result<(), W25qError<BUS::Error>> {
@@ -78,7 +83,12 @@ impl<BUS: SpiBus, CS: OutputPin, const ERASE_UNIT: usize> W25qNorFlash<BUS, CS, 
 
     fn page_program(&mut self, addr: u32, data: &[u8]) -> Result<(), W25qError<BUS::Error>> {
         self.write_enable()?;
-        let cmd = [CMD_PAGE_PROGRAM, (addr >> 16) as u8, (addr >> 8) as u8, addr as u8];
+        let cmd = [
+            CMD_PAGE_PROGRAM,
+            (addr >> 16) as u8,
+            (addr >> 8) as u8,
+            addr as u8,
+        ];
         self.cs.set_low().ok();
         let res = self.bus.write(&cmd);
         if res.is_err() {
@@ -92,7 +102,12 @@ impl<BUS: SpiBus, CS: OutputPin, const ERASE_UNIT: usize> W25qNorFlash<BUS, CS, 
 
     fn sector_erase(&mut self, addr: u32) -> Result<(), W25qError<BUS::Error>> {
         self.write_enable()?;
-        let cmd = [CMD_SECTOR_ERASE, (addr >> 16) as u8, (addr >> 8) as u8, addr as u8];
+        let cmd = [
+            CMD_SECTOR_ERASE,
+            (addr >> 16) as u8,
+            (addr >> 8) as u8,
+            addr as u8,
+        ];
         self.cs.set_low().ok();
         let res = self.bus.write(&cmd).map_err(W25qError::Spi);
         self.cs.set_high().ok();
@@ -101,7 +116,12 @@ impl<BUS: SpiBus, CS: OutputPin, const ERASE_UNIT: usize> W25qNorFlash<BUS, CS, 
 
     fn block_erase_64k(&mut self, addr: u32) -> Result<(), W25qError<BUS::Error>> {
         self.write_enable()?;
-        let cmd = [CMD_BLOCK_ERASE_64K, (addr >> 16) as u8, (addr >> 8) as u8, addr as u8];
+        let cmd = [
+            CMD_BLOCK_ERASE_64K,
+            (addr >> 16) as u8,
+            (addr >> 8) as u8,
+            addr as u8,
+        ];
         self.cs.set_low().ok();
         let res = self.bus.write(&cmd).map_err(W25qError::Spi);
         self.cs.set_high().ok();

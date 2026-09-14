@@ -10,8 +10,6 @@ pub(crate) use noop::*;
 
 #[cfg(not(feature = "defmt"))]
 mod noop {
-    // debug! has call sites only in some feature combinations (e.g. not under noswap).
-    #[allow(unused_macros)]
     macro_rules! debug {
         ($($arg:tt)*) => {};
     }
