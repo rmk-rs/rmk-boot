@@ -8,9 +8,9 @@ use embassy_sync::blocking_mutex::Mutex;
 use embassy_nrf::nvmc::Nvmc;
 
 // ---------------------------------------------------------------------------
-// Interrupt binding – nRF52840
+// Interrupt binding – nRF52
 // ---------------------------------------------------------------------------
-#[cfg(feature = "nrf52840")]
+#[cfg(feature = "nrf528xx")]
 embassy_nrf::bind_interrupts! {
     pub(crate) struct DfuIrqs {
         USBD => embassy_nrf::usb::InterruptHandler<embassy_nrf::peripherals::USBD>;
