@@ -9,6 +9,7 @@ fn main() {
     let is_rp2040 = env::var("CARGO_FEATURE_RP2040").is_ok();
     let is_nrf52840 = env::var("CARGO_FEATURE_NRF52840").is_ok();
     let is_nrf52833 = env::var("CARGO_FEATURE_NRF52833").is_ok();
+    let is_noswap = env::var("CARGO_FEATURE_NOSWAP").is_ok();
 
     if is_nrf52840 && is_nrf52833 {
         panic!("nrf52840 and nrf52833 are mutually exclusive");
@@ -30,10 +31,18 @@ fn main() {
             } else {
                 panic!("No RP2040 flash size feature enabled");
             };
+        let variant_slug = if is_noswap {
+            format!("{variant_slug}-noswap")
+        } else {
+            variant_slug.to_string()
+        };
 
         let remaining = flash_size - 28 * 1024 - STORAGE_SIZE;
-        let active_size = (remaining - PAGE_SIZE) / 2;
-        let dfu_size = active_size + PAGE_SIZE;
+        let (active_size, dfu_size) = if is_noswap {
+            (remaining, 0)
+        } else {
+            ((remaining - PAGE_SIZE) / 2, (remaining - PAGE_SIZE) / 2 + PAGE_SIZE)
+        };
         // Absolute XIP addresses
         let abs_active_offset = 0x1000_7000u32;
         let abs_dfu_offset = abs_active_offset + active_size as u32;
@@ -78,6 +87,7 @@ __bootloader_dfu_end      = ORIGIN(DFU) + LENGTH(DFU) - ORIGIN(BOOT2);
         println!("cargo:rerun-if-env-changed=CARGO_FEATURE_RP2040_4MB");
         println!("cargo:rerun-if-env-changed=CARGO_FEATURE_RP2040_8MB");
         println!("cargo:rerun-if-env-changed=CARGO_FEATURE_RP2040_16MB");
+        println!("cargo:rerun-if-env-changed=CARGO_FEATURE_NOSWAP");
 
         let rmk_boot_x = build_rmk_boot_x(
             variant_label,
@@ -85,15 +95,15 @@ __bootloader_dfu_end      = ORIGIN(DFU) + LENGTH(DFU) - ORIGIN(BOOT2);
             active_size as u32,
             rel_state_offset,
             0x1000,
-            rel_dfu_offset,
-            rel_dfu_size,
+            if is_noswap { 0 } else { rel_dfu_offset },
+            if is_noswap { 0 } else { rel_dfu_size },
             rel_storage_offset,
             STORAGE_SIZE as u32,
             0x1000_0000, // XIP flash base
             256 * 1024,
         );
         let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        write_rmk_boot_x(&project_root, variant_slug, &rmk_boot_x);
+        write_rmk_boot_x(&project_root, &variant_slug, &rmk_boot_x);
     } else if is_nrf52840 || is_nrf52833 {
         let (variant_label, variant_slug, flash_size, ram_size) = if is_nrf52840 {
             ("nRF52840", "nrf52840", 1024 * 1024, 256 * 1024)
@@ -103,12 +113,27 @@ __bootloader_dfu_end      = ORIGIN(DFU) + LENGTH(DFU) - ORIGIN(BOOT2);
         let bootloader_size = 24 * 1024;
         let state_size = 4 * 1024;
         let remaining = flash_size - bootloader_size - state_size - STORAGE_SIZE;
-        let active_size = (remaining - PAGE_SIZE) / 2;
-        let dfu_size = active_size + PAGE_SIZE;
+        let (active_size, dfu_size) = if is_noswap {
+            (remaining, 0)
+        } else {
+            ((remaining - PAGE_SIZE) / 2, (remaining - PAGE_SIZE) / 2 + PAGE_SIZE)
+        };
 
         let abs_state_offset = bootloader_size as u32;
         let abs_active_offset = (bootloader_size + state_size) as u32;
         let abs_dfu_offset = abs_active_offset + active_size as u32;
+
+        let (dfu_start_sym, dfu_end_sym) = if is_noswap {
+            (
+                format!("__bootloader_dfu_start     = ORIGIN(ACTIVE);"),
+                format!("__bootloader_dfu_end       = ORIGIN(ACTIVE) + LENGTH(ACTIVE);"),
+            )
+        } else {
+            (
+                format!("__bootloader_dfu_start     = ORIGIN(DFU);"),
+                format!("__bootloader_dfu_end       = ORIGIN(DFU) + LENGTH(DFU);"),
+            )
+        };
 
         let memory_x = format!(
             "\
@@ -128,14 +153,15 @@ __bootloader_state_end     = ORIGIN(BOOTLOADER_STATE) + LENGTH(BOOTLOADER_STATE)
 __bootloader_active_start  = ORIGIN(ACTIVE);
 __bootloader_active_end    = ORIGIN(ACTIVE) + LENGTH(ACTIVE);
 
-__bootloader_dfu_start     = ORIGIN(DFU);
-__bootloader_dfu_end       = ORIGIN(DFU) + LENGTH(DFU);
+{dfu_start_sym}
+{dfu_end_sym}
 "
         );
 
         fs::write(out.join("memory.x"), &memory_x).unwrap();
         println!("cargo:rustc-link-search={}", out.display());
         println!("cargo:rustc-link-arg-bins=-Tlink.x");
+        println!("cargo:rerun-if-env-changed=CARGO_FEATURE_NOSWAP");
 
         let rmk_boot_x = build_rmk_boot_x(
             variant_label,
@@ -143,8 +169,8 @@ __bootloader_dfu_end       = ORIGIN(DFU) + LENGTH(DFU);
             active_size as u32,
             abs_state_offset,
             state_size as u32,
-            abs_dfu_offset,
-            dfu_size as u32,
+            if is_noswap { 0 } else { abs_dfu_offset },
+            if is_noswap { 0 } else { dfu_size as u32 },
             abs_dfu_offset + dfu_size as u32,
             STORAGE_SIZE as u32,
             0x0000_0000, // flash base

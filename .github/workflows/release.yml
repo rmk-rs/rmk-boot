@@ -28,6 +28,10 @@ jobs:
           cp target/thumbv7em-none-eabihf/release/rmk-boot rmk-boot-nrf52840.elf
           cargo build --release --target thumbv7em-none-eabihf --features nrf52833
           cp target/thumbv7em-none-eabihf/release/rmk-boot rmk-boot-nrf52833.elf
+          cargo build --release --target thumbv7em-none-eabihf --features nrf52840,noswap
+          cp target/thumbv7em-none-eabihf/release/rmk-boot rmk-boot-nrf52840-noswap.elf
+          cargo build --release --target thumbv7em-none-eabihf --features nrf52833,noswap
+          cp target/thumbv7em-none-eabihf/release/rmk-boot rmk-boot-nrf52833-noswap.elf
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v3
@@ -38,5 +42,7 @@ jobs:
             *-memory.x
             rmk-boot-nrf52840.elf
             rmk-boot-nrf52833.elf
+            rmk-boot-nrf52840-noswap.elf
+            rmk-boot-nrf52833-noswap.elf
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
