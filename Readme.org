@@ -33,6 +33,11 @@ matching =memory.x= needed.
   no DFU→ACTIVE copy). Double-tap DFU still works and writes directly to
   ACTIVE instead of a separate DFU slot. Ideal for smaller flash chips where
   RMK is too large for a dual-slot layout.
+- **External flash DFU (=dfu_ext=)** — move the DFU download slot to an
+  external SPI NOR flash chip (e.g. W25Q64JV). The internal DFU partition is
+  removed entirely and the ACTIVE region expands to roughly double the space
+  for firmware. Requires a 25-series SPI flash chip connected via SPI.
+  Mutually exclusive with =noswap=.
 - **UF2 builds** — =cargo make uf2-*= generates ready-to-flash =*.uf2= files.
 - **rmk-memory.x** — each build also produces a matching linker script that RMK
   consumes at link time for zero-config flash layout.
@@ -81,6 +86,12 @@ cargo make uf2-nrf52833    # → rmk-boot-nrf52833.uf2 + rmk-nrf52833-memory.x
 
 All variants also have =*-noswap= counterparts (e.g. =uf2-nrf52833-noswap=) that
 skip the DFU→ACTIVE swap and boot directly into ACTIVE.
+All variants also have =*-dfu_ext= counterparts (e.g. =uf2-rp2040-2mb-dfu_ext=) for
+external SPI flash as DFU slot.
+Build all at once:
+#+BEGIN_SRC sh
+cargo make uf2-all
+#+END_SRC
 
 Copy the =*.uf2= to the =RPI-RP2= mass-storage device that appears when you
 hold BOOTSEL while plugging in USB.
@@ -99,7 +110,9 @@ bootloader for the nRF52. Double tap NRST (reset pin) to GND to enter DFU mode,
 the LED (P0_15 by default) starts breathing slowly to show that DFU mode is active. 
 
 With the =noswap= feature, DFU mode writes new firmware directly to the ACTIVE
-partition instead of a separate DFU slot. 
+partition instead of a separate DFU slot.
+With the =dfu_ext= feature, DFU mode writes to the external SPI flash instead
+of the internal DFU partition. 
 
 * Flash-size variants
 
@@ -113,7 +126,10 @@ Exactly one feature must be enabled at build time. Storage defaults to 32 KB
 | =rp2040-8mb=  | 8 MB       | 4064 K  | 4068 K  |   0x10007000 | 0x103FF000 |
 | =rp2040-16mb= | 16 MB      | 8160 K  | 8164 K  |   0x10007000 | 0x107FF000 |
 | =nrf52840=    | 1 MB       | 480 K   | 484 K   |   0x00007000 | 0x0007B000 |
-| =nrf52833=    | 512 KB     | 224 K   | 228 K   |   0x00007000 | 0x0003F000 |
+| =nrf52833=    | 512 KB     | 224 K   | 228 K   |   0x00007000 | 0x0003F000 |
+
+With =dfu_ext=, the internal DFU partition is removed (size 0) and ACTIVE
+expands to fill the freed space.
 
 The fixed regions for RP2040 (identical for all variants):
 
@@ -248,6 +264,43 @@ let pwm = SimplePwm::new_1ch(p.PWM0, p.P1_09, &pwm_cfg);
 You can also use a different PWM instance (=PWM1=, =PWM2=) if =PWM0= is
 already in use — just pass =p.PWM1= instead of =p.PWM0=.
 
+** Changing the SPI pins for external flash
+
+When building with =dfu_ext=, the bootloader uses hard-coded SPI pins to talk
+to the external flash chip. Defaults:
+
+| Platform | SCK    | MOSI   | MISO   | CS     |
+|----------+--------+--------+--------+--------|
+| RP2040   | PIN_18 | PIN_19 | PIN_16 | PIN_17 |
+| nRF52840 | P0_25  | P0_23  | P0_24  | P0_22  |
+
+If your board is wired differently, edit the platform source file.
+
+*** RP2040
+
+In =src/rp2040.rs=, change the pins in the =Spi::new_blocking= call inside
+the =#[cfg(feature = "dfu_ext")]= block:
+
+#+BEGIN_SRC rust
+let spi_bus = Spi::new_blocking(p.SPI0, p.PIN_18, p.PIN_19, p.PIN_16, spi_cfg);
+let cs = Output::new(p.PIN_17, Level::High);
+#+END_SRC
+
+*** nRF52
+
+In =src/nrf528xx.rs=, change the pins in both =#[cfg(feature = "dfu_ext")]=
+blocks:
+
+#+BEGIN_SRC rust
+let spi = Spim::new(p.TWISPI0, ExtFlashIrqs, p.P0_25, p.P0_24, p.P0_23, spi_cfg);
+let cs = Output::new(p.P0_22, Level::High, OutputDrive::Standard);
+#+END_SRC
+
+The =TWISPI0= instance (SPIM0) is the default; change it if you use a
+different SPI peripheral.
+
+The =EXT_FLASH_SIZE= constant (default 8 MB) lives in =src/main.rs=.
+
 * Flashing
 
 *** First time (probe-rs)
@@ -291,6 +344,7 @@ The bootloader is split into five source files:
 | =src/rp2040.rs=   | RP2040 bootloader — =#[cfg(feature = "rp2040")]=, compiled only for RP2040 |
 | =src/nrf528xx.rs= | nRF52 bootloader — =#[cfg(any(feature = "nrf52840", feature = "nrf52833"))]= |
 | =src/dfu.rs=      | nRF52 USB DFU — =#[cfg(any(feature = "nrf52840", feature = "nrf52833"))]=, =block_on()= runtime, USB DFU stack |
+| =src/driver/w25q.rs= | W25Q-compatible SPI NOR flash driver (=NorFlash= impl via JEDEC commands), compiled with =dfu_ext= |
 | =src/led_pwm.rs=  | Cross-platform PWM LED singleton — breathing =tick()= (SysTick), hard on/off =set_raw()=, =deinit()= cleanup |
 
 =led_pwm.rs= is platform-agnostic; each platform module constructs the correct
