@@ -66,13 +66,11 @@ pub fn tick() {
     set_hw_duty(duty);
 }
 
-#[cfg(not(feature = "noswap"))]
 pub fn start(period_ms: u32) {
     MS.lock(|m| m.set(0));
     PERIOD.lock(|p| p.set(period_ms));
 }
 
-#[cfg(not(feature = "noswap"))]
 pub fn stop() {
     set_hw_duty(0);
     PERIOD.lock(|p| p.set(0));
