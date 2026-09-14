@@ -8,6 +8,11 @@ fn main() {
 
     let is_rp2040 = env::var("CARGO_FEATURE_RP2040").is_ok();
     let is_nrf52840 = env::var("CARGO_FEATURE_NRF52840").is_ok();
+    let is_nrf52833 = env::var("CARGO_FEATURE_NRF52833").is_ok();
+
+    if is_nrf52840 && is_nrf52833 {
+        panic!("nrf52840 and nrf52833 are mutually exclusive");
+    }
 
     const PAGE_SIZE: usize = 4 * 1024;
     const STORAGE_SIZE: usize = 32 * 1024;
@@ -85,11 +90,16 @@ __bootloader_dfu_end      = ORIGIN(DFU) + LENGTH(DFU) - ORIGIN(BOOT2);
             rel_storage_offset,
             STORAGE_SIZE as u32,
             0x1000_0000, // XIP flash base
+            256 * 1024,
         );
         let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
         write_rmk_boot_x(&project_root, variant_slug, &rmk_boot_x);
-    } else if is_nrf52840 {
-        let flash_size = 1024 * 1024;
+    } else if is_nrf52840 || is_nrf52833 {
+        let (variant_label, variant_slug, flash_size, ram_size) = if is_nrf52840 {
+            ("nRF52840", "nrf52840", 1024 * 1024, 256 * 1024)
+        } else {
+            ("nRF52833", "nrf52833", 512 * 1024, 128 * 1024)
+        };
         let bootloader_size = 24 * 1024;
         let state_size = 4 * 1024;
         let remaining = flash_size - bootloader_size - state_size - STORAGE_SIZE;
@@ -109,7 +119,7 @@ MEMORY
   ACTIVE            : ORIGIN = 0x{abs_active_offset:08X}, LENGTH = {active_size}
   DFU               : ORIGIN = 0x{abs_dfu_offset:08X}, LENGTH = {dfu_size}
 
-  RAM               : ORIGIN = 0x20000000, LENGTH = 256K
+  RAM               : ORIGIN = 0x20000000, LENGTH = {ram_size}
 }}
 
 __bootloader_state_start   = ORIGIN(BOOTLOADER_STATE);
@@ -128,7 +138,7 @@ __bootloader_dfu_end       = ORIGIN(DFU) + LENGTH(DFU);
         println!("cargo:rustc-link-arg-bins=-Tlink.x");
 
         let rmk_boot_x = build_rmk_boot_x(
-            "nRF52840",
+            variant_label,
             abs_active_offset,
             active_size as u32,
             abs_state_offset,
@@ -136,13 +146,14 @@ __bootloader_dfu_end       = ORIGIN(DFU) + LENGTH(DFU);
             abs_dfu_offset,
             dfu_size as u32,
             abs_dfu_offset + dfu_size as u32,
-            STORAGE_SIZE as u32, // nRF flash_base is 0, so absolute = relative
-            0x0000_0000,         // flash base
+            STORAGE_SIZE as u32,
+            0x0000_0000, // flash base
+            ram_size as u32,
         );
         let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        write_rmk_boot_x(&project_root, "nrf52840", &rmk_boot_x);
+        write_rmk_boot_x(&project_root, &variant_slug, &rmk_boot_x);
     } else {
-        panic!("No platform feature enabled (rp2040 or nrf52840)");
+        panic!("No platform feature enabled (rp2040 or nrf52840 or nrf52833)");
     }
 
     println!("cargo:rerun-if-changed=build.rs");
@@ -170,6 +181,7 @@ fn build_rmk_boot_x(
     storage_offset: u32,
     storage_size: u32,
     flash_base: u32,
+    ram_size: u32,
 ) -> String {
     let rel_active_offset = active_offset - flash_base;
     let state_end = state_offset + state_size;
@@ -191,7 +203,7 @@ fn build_rmk_boot_x(
 
 MEMORY {{
   FLASH : ORIGIN = 0x{active_offset:08X}, LENGTH = {active_size}   /* ACTIVE region */
-  RAM   : ORIGIN = 0x20000000, LENGTH = 256K                       /* SRAM */
+  RAM   : ORIGIN = 0x20000000, LENGTH = {ram_size}                 /* SRAM */
 }}
 
 /* Bootloader partition symbols — offsets relative to flash start.
